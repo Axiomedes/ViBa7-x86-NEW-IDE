@@ -24,10 +24,76 @@ public static class ControlVisualRenderer
     /// </summary>
     public static Func<string, FormDesignModel?>? UserControlModelResolver { get; set; }
 
+    static ControlVisualRenderer()
+    {
+        ActiveXInPlaceHost.FallbackVisualFactory = ctrl => CreateWpfSimulatedVisual(ctrl);
+    }
+
     /// <summary>
-    /// Crea el elemento visual de WPF para un control del diseñador.
+    /// Crea el elemento visual de WPF para un control del diseñador (Modo Diseño: UserMode = False).
     /// </summary>
     public static FrameworkElement CreateVisual(FormDesignerControl control, Action<FormDesignerControl, FrameworkElement>? onChildCreated = null)
+        => CreateVisualInternal(control, onChildCreated, isRuntime: false);
+
+    /// <summary>
+    /// Crea el elemento visual de WPF/HwndHost interactivo para un control en Modo Ejecución F5 (UserMode = True).
+    /// </summary>
+    public static FrameworkElement CreateRuntimeVisual(FormDesignerControl control, Action<FormDesignerControl, FrameworkElement>? onChildCreated = null)
+        => CreateVisualInternal(control, onChildCreated, isRuntime: true);
+
+    /// <summary>
+    /// Crea el elemento visual simulado en WPF para un control (usado internamente o como fallback de ActiveX).
+    /// </summary>
+    public static FrameworkElement CreateWpfSimulatedVisual(FormDesignerControl control, Action<FormDesignerControl, FrameworkElement>? onChildCreated = null)
+    {
+        bool hasVbPrefix = control.TypeName.StartsWith("VB.", StringComparison.OrdinalIgnoreCase);
+        string normType = control.TypeName.ToUpperInvariant();
+        if (hasVbPrefix)
+        {
+            normType = normType[3..];
+        }
+
+        string shortName = control.TypeName.Contains('.')
+            ? control.TypeName.Substring(control.TypeName.LastIndexOf('.') + 1)
+            : control.TypeName;
+
+        // Si es un UserControl registrado en el proyecto, componerlo visualmente
+        if (UserControlModelResolver != null)
+        {
+            var ucModel = UserControlModelResolver(control.TypeName)
+                       ?? UserControlModelResolver(shortName)
+                       ?? UserControlModelResolver(normType);
+            if (ucModel != null)
+            {
+                return CreateUserControlVisual(control, ucModel, onChildCreated);
+            }
+        }
+
+        return normType switch
+        {
+            "COMMANDBUTTON" => CreateCommandButton(control),
+            "TEXTBOX" => CreateTextBox(control),
+            "LABEL" => CreateLabel(control),
+            "CHECKBOX" => CreateCheckBox(control),
+            "OPTIONBUTTON" => CreateOptionButton(control),
+            "FRAME" => CreateFrame(control, onChildCreated),
+            "LISTBOX" => CreateListBox(control),
+            "COMBOBOX" => CreateComboBox(control),
+            "PICTUREBOX" => CreatePictureBox(control, onChildCreated),
+            "IMAGE" => CreateImage(control),
+            "TIMER" => CreateTimer(control),
+            "HSCROLLBAR" => CreateHScrollBar(control),
+            "VSCROLLBAR" => CreateVScrollBar(control),
+            "SHAPE" => CreateShape(control),
+            "LINE" => CreateLine(control),
+            _ => DispatchSpecializedOrGenericControl(control, normType, onChildCreated)
+        };
+    }
+
+    private static FrameworkElement CreateVisualInternal(
+        FormDesignerControl control,
+        Action<FormDesignerControl, FrameworkElement>? onChildCreated,
+        bool isRuntime)
     {
         bool hasVbPrefix = control.TypeName.StartsWith("VB.", StringComparison.OrdinalIgnoreCase);
         string normType = control.TypeName.ToUpperInvariant();
@@ -65,40 +131,25 @@ public static class ControlVisualRenderer
 
         if (visual == null)
         {
-            var wpfVisual = normType switch
-            {
-                "COMMANDBUTTON" => CreateCommandButton(control),
-                "TEXTBOX" => CreateTextBox(control),
-                "LABEL" => CreateLabel(control),
-                "CHECKBOX" => CreateCheckBox(control),
-                "OPTIONBUTTON" => CreateOptionButton(control),
-                "FRAME" => CreateFrame(control, onChildCreated),
-                "LISTBOX" => CreateListBox(control),
-                "COMBOBOX" => CreateComboBox(control),
-                "PICTUREBOX" => CreatePictureBox(control, onChildCreated),
-                "IMAGE" => CreateImage(control),
-                "TIMER" => CreateTimer(control),
-                "HSCROLLBAR" => CreateHScrollBar(control),
-                "VSCROLLBAR" => CreateVScrollBar(control),
-                "SHAPE" => CreateShape(control),
-                "LINE" => CreateLine(control),
-                _ => DispatchSpecializedOrGenericControl(control, normType, onChildCreated)
-            };
+            var wpfVisual = CreateWpfSimulatedVisual(control, onChildCreated);
 
-            // Si es un control OCX externo y es visual, intentar hospedaje ActiveX con respaldo visual automático a wpfVisual
+            // Si es un control OCX externo y es visual, intentar hospedaje ActiveX (ActiveXRuntimeHost en F5 o ActiveXInPlaceHost en Diseño)
             if (!isIntrinsicVb && !isNonVisual && ActiveXHostFactory.EnableInPlaceActiveXHosting)
             {
-                var axHost = ActiveXHostFactory.TryCreateHost(control, wpfVisual);
-                if (axHost != null)
+                FrameworkElement? axVisual = isRuntime
+                    ? ActiveXHostFactory.TryCreateRuntimeHost(control, wpfVisual)
+                    : ActiveXHostFactory.TryCreateHost(control, wpfVisual);
+
+                if (axVisual != null)
                 {
                     if (control.Children.Count > 0)
                     {
                         var containerGrid = new Grid();
-                        containerGrid.Children.Add(axHost);
+                        containerGrid.Children.Add(axVisual);
                         var overlayCanvas = new Canvas { ClipToBounds = true, Background = Brushes.Transparent };
                         foreach (var child in control.Children)
                         {
-                            var childVisual = CreateVisual(child, onChildCreated);
+                            var childVisual = CreateVisualInternal(child, onChildCreated, isRuntime);
                             overlayCanvas.Children.Add(childVisual);
                             onChildCreated?.Invoke(child, childVisual);
                         }
@@ -107,7 +158,7 @@ public static class ControlVisualRenderer
                     }
                     else
                     {
-                        visual = axHost;
+                        visual = axVisual;
                     }
                 }
                 else
@@ -853,7 +904,7 @@ public static class ControlVisualRenderer
         // 4. Color plano
         if (!string.IsNullOrWhiteSpace(col1Str))
         {
-            return VbColorHelper.ToBrush(col1Str, (SolidColorBrush)fallback);
+            return VbColorHelper.ToBrush(col1Str, fallback as SolidColorBrush ?? new SolidColorBrush(Color.FromRgb(240, 240, 240)));
         }
 
         return fallback;
@@ -871,7 +922,7 @@ public static class ControlVisualRenderer
                             ?? ctrl.GetCustomProperty("BorderColorActive");
 
         Brush bBrush = !string.IsNullOrWhiteSpace(borderColStr)
-            ? VbColorHelper.ToBrush(borderColStr, (SolidColorBrush)defaultBorderBrush)
+            ? VbColorHelper.ToBrush(borderColStr, defaultBorderBrush as SolidColorBrush ?? new SolidColorBrush(Color.FromRgb(140, 140, 140)))
             : defaultBorderBrush;
 
         int bWidth = ctrl.GetCustomPropertyInt("BorderWidth") ?? defaultThickness;
@@ -884,7 +935,7 @@ public static class ControlVisualRenderer
                  ?? ctrl.GetCustomPropertyInt("RoundCorners")
                  ?? defaultCorner;
 
-        return (bBrush, new Thickness(bWidth), new CornerRadius(Math.Clamp(curve, 0, 30)));
+        return (bBrush, new Thickness(Math.Max(0, bWidth)), new CornerRadius(Math.Clamp(curve, 0, 30)));
     }
 
     public static Brush GetEffectiveForeColor(FormDesignerControl ctrl, Brush fallback)
@@ -897,7 +948,7 @@ public static class ControlVisualRenderer
 
         if (!string.IsNullOrWhiteSpace(foreStr))
         {
-            return VbColorHelper.ToBrush(foreStr, (SolidColorBrush)fallback);
+            return VbColorHelper.ToBrush(foreStr, fallback as SolidColorBrush ?? Brushes.Black);
         }
         return fallback;
     }
@@ -1148,7 +1199,19 @@ public static class ControlVisualRenderer
                 // Mapear Caption/Text según tipo de control constitutivo
                 if (composedChild.TypeName.EndsWith("Label", StringComparison.OrdinalIgnoreCase))
                 {
-                    if (specificCaption != null)
+                    string? charCodeStr = ctrl.GetCustomProperty("IconCharCode") ?? ctrl.GetCustomProperty("IconCode") ?? ctrl.GetCustomProperty("CharCode");
+                    int? parsedCharCode = DesignerPropertyFactory.ParseCharCode(charCodeStr);
+                    if (parsedCharCode.HasValue && parsedCharCode.Value > 0 &&
+                        (composedChild.Name.Contains("Icon", StringComparison.OrdinalIgnoreCase) ||
+                         (child.Font?.Name != null && (child.Font.Name.Contains("Font", StringComparison.OrdinalIgnoreCase) || child.Font.Name.Contains("Ico", StringComparison.OrdinalIgnoreCase)))))
+                    {
+                        composedChild.Caption = SafeConvertFromUtf32(parsedCharCode.Value);
+                        var iconFont = ctrl.GetFontProperty("IconFont") ?? ctrl.GetFontProperty("Font");
+                        if (iconFont != null) composedChild.Font = iconFont;
+                        string? iconCol = ctrl.GetCustomProperty("IconForeColor") ?? ctrl.GetCustomProperty("IconColor");
+                        if (iconCol != null) composedChild.ForeColorHex = iconCol;
+                    }
+                    else if (specificCaption != null)
                     {
                         composedChild.Caption = specificCaption;
                     }
@@ -1208,57 +1271,110 @@ public static class ControlVisualRenderer
         else
         {
             // UserControl sin controles constitutivos (dibujado por código / GDI)
-            var sp = new StackPanel
-            {
-                VerticalAlignment = VerticalAlignment.Center,
-                HorizontalAlignment = HorizontalAlignment.Center,
-                IsHitTestVisible = false
-            };
-
-            var iconSource = ResolveControlIcon(ctrl);
-            if (iconSource != null)
-            {
-                var img = new Image
-                {
-                    Source = iconSource,
-                    Width = 16,
-                    Height = 16,
-                    HorizontalAlignment = HorizontalAlignment.Center,
-                    Margin = new Thickness(0, 0, 0, 2)
-                };
-                RenderOptions.SetBitmapScalingMode(img, BitmapScalingMode.NearestNeighbor);
-                sp.Children.Add(img);
-            }
+            string? charCodeStr = ctrl.GetCustomProperty("IconCharCode") ?? ctrl.GetCustomProperty("IconCode") ?? ctrl.GetCustomProperty("CharCode");
+            int? charCode = DesignerPropertyFactory.ParseCharCode(charCodeStr);
 
             string labelText = GetEffectiveCaption(ctrl);
             var effFont = ctrl.Font ?? ucModel.Font ?? GetEffectiveFont(ctrl);
+            var foreBrush = GetEffectiveForeColor(ctrl, VbColorHelper.ToBrush(ctrl.ForeColorHex ?? ucModel.ForeColorHex, Brushes.DarkSlateGray));
 
-            sp.Children.Add(new TextBlock
+            if (charCode.HasValue && charCode.Value > 0)
             {
-                Text = labelText,
-                FontFamily = GetFontFamily(effFont),
-                FontSize = GetFontSize(effFont),
-                FontWeight = GetFontWeight(effFont),
-                FontStyle = GetFontStyle(effFont),
-                Foreground = GetEffectiveForeColor(ctrl, VbColorHelper.ToBrush(ctrl.ForeColorHex ?? ucModel.ForeColorHex, Brushes.DarkSlateGray)),
-                HorizontalAlignment = HorizontalAlignment.Center
-            });
+                string glyph = SafeConvertFromUtf32(charCode.Value);
+                var iconFont = ctrl.GetFontProperty("IconFont") ?? ctrl.GetFontProperty("Font") ?? effFont;
+                string? iconColorHex = ctrl.GetCustomProperty("IconForeColor") ?? ctrl.GetCustomProperty("IconColor") ?? ctrl.ForeColorHex;
+                var iconBrush = VbColorHelper.ToBrush(iconColorHex, foreBrush as SolidColorBrush ?? Brushes.DarkSlateGray);
 
-            string? subText = GetEffectiveSubCaption(ctrl);
-            if (!string.IsNullOrWhiteSpace(subText))
+                var iconBlock = new TextBlock
+                {
+                    Text = glyph,
+                    FontFamily = GetFontFamily(iconFont),
+                    FontSize = iconFont?.Size > 0 ? GetFontSize(iconFont) : GetFontSize(effFont) + 2,
+                    FontWeight = GetFontWeight(iconFont),
+                    FontStyle = GetFontStyle(iconFont),
+                    Foreground = iconBrush,
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+
+                if (!string.IsNullOrWhiteSpace(labelText))
+                {
+                    iconBlock.Margin = new Thickness(0, 0, 6, 0);
+                    var hPanel = new StackPanel
+                    {
+                        Orientation = Orientation.Horizontal,
+                        VerticalAlignment = VerticalAlignment.Center,
+                        HorizontalAlignment = HorizontalAlignment.Center,
+                        IsHitTestVisible = false
+                    };
+                    hPanel.Children.Add(iconBlock);
+                    hPanel.Children.Add(new TextBlock
+                    {
+                        Text = labelText,
+                        FontFamily = GetFontFamily(effFont),
+                        FontSize = GetFontSize(effFont),
+                        FontWeight = GetFontWeight(effFont),
+                        FontStyle = GetFontStyle(effFont),
+                        Foreground = foreBrush,
+                        VerticalAlignment = VerticalAlignment.Center
+                    });
+                    rootGrid.Children.Add(hPanel);
+                }
+                else
+                {
+                    rootGrid.Children.Add(iconBlock);
+                }
+            }
+            else
             {
+                var sp = new StackPanel
+                {
+                    VerticalAlignment = VerticalAlignment.Center,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    IsHitTestVisible = false
+                };
+
+                var iconSource = ResolveControlIcon(ctrl);
+                if (iconSource != null)
+                {
+                    var img = new Image
+                    {
+                        Source = iconSource,
+                        Width = 16,
+                        Height = 16,
+                        HorizontalAlignment = HorizontalAlignment.Center,
+                        Margin = new Thickness(0, 0, 0, 2)
+                    };
+                    RenderOptions.SetBitmapScalingMode(img, BitmapScalingMode.NearestNeighbor);
+                    sp.Children.Add(img);
+                }
+
                 sp.Children.Add(new TextBlock
                 {
-                    Text = subText,
+                    Text = labelText,
                     FontFamily = GetFontFamily(effFont),
-                    FontSize = Math.Max(7, GetFontSize(effFont) - 1.5),
-                    Foreground = Brushes.Gray,
-                    HorizontalAlignment = HorizontalAlignment.Center,
-                    Margin = new Thickness(0, 2, 0, 0)
+                    FontSize = GetFontSize(effFont),
+                    FontWeight = GetFontWeight(effFont),
+                    FontStyle = GetFontStyle(effFont),
+                    Foreground = foreBrush,
+                    HorizontalAlignment = HorizontalAlignment.Center
                 });
-            }
 
-            rootGrid.Children.Add(sp);
+                string? subText = GetEffectiveSubCaption(ctrl);
+                if (!string.IsNullOrWhiteSpace(subText))
+                {
+                    sp.Children.Add(new TextBlock
+                    {
+                        Text = subText,
+                        FontFamily = GetFontFamily(effFont),
+                        FontSize = Math.Max(7, GetFontSize(effFont) - 1.5),
+                        Foreground = Brushes.Gray,
+                        HorizontalAlignment = HorizontalAlignment.Center,
+                        Margin = new Thickness(0, 2, 0, 0)
+                    });
+                }
+
+                rootGrid.Children.Add(sp);
+            }
         }
 
         // Renderizar controles hijos alojados dentro de esta instancia (si es un UserControl contenedor)
@@ -2573,7 +2689,54 @@ public static class ControlVisualRenderer
             TextAlignment = align,
             TextWrapping = isWordWrap ? TextWrapping.Wrap : TextWrapping.NoWrap
         };
-        panel.Children.Add(text);
+
+        string? charCodeStr = ctrl.GetCustomProperty("IconCharCode") ?? ctrl.GetCustomProperty("IconCode") ?? ctrl.GetCustomProperty("CharCode");
+        int? charCode = DesignerPropertyFactory.ParseCharCode(charCodeStr);
+
+        if (charCode.HasValue && charCode.Value > 0)
+        {
+            string glyph = SafeConvertFromUtf32(charCode.Value);
+            var iconFont = ctrl.GetFontProperty("IconFont") ?? ctrl.GetFontProperty("Font") ?? font;
+            string? iconColorHex = ctrl.GetCustomProperty("IconForeColor") ?? ctrl.GetCustomProperty("IconColor") ?? ctrl.ForeColorHex;
+            var iconBrush = VbColorHelper.ToBrush(iconColorHex, foreBrush as SolidColorBrush ?? Brushes.Black);
+
+            var iconBlock = new TextBlock
+            {
+                Text = glyph,
+                FontFamily = GetFontFamily(iconFont),
+                FontSize = iconFont?.Size > 0 ? GetFontSize(iconFont) : GetFontSize(font) + 2,
+                FontWeight = GetFontWeight(iconFont),
+                FontStyle = GetFontStyle(iconFont),
+                Foreground = iconBrush,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+
+            if (!string.IsNullOrEmpty(caption) && !caption.Equals(ctrl.Name, StringComparison.OrdinalIgnoreCase))
+            {
+                var hPanel = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                if (align == TextAlignment.Center) hPanel.HorizontalAlignment = HorizontalAlignment.Center;
+                else if (align == TextAlignment.Right) hPanel.HorizontalAlignment = HorizontalAlignment.Right;
+
+                iconBlock.Margin = new Thickness(0, 0, 6, 0);
+                hPanel.Children.Add(iconBlock);
+                hPanel.Children.Add(text);
+                panel.Children.Add(hPanel);
+            }
+            else
+            {
+                if (align == TextAlignment.Center) iconBlock.HorizontalAlignment = HorizontalAlignment.Center;
+                else if (align == TextAlignment.Right) iconBlock.HorizontalAlignment = HorizontalAlignment.Right;
+                panel.Children.Add(iconBlock);
+            }
+        }
+        else
+        {
+            panel.Children.Add(text);
+        }
 
         string? subCaption = GetEffectiveSubCaption(ctrl);
         if (!string.IsNullOrEmpty(subCaption))
@@ -2794,11 +2957,37 @@ public static class ControlVisualRenderer
         return textBlock;
     }
 
+    /// <summary>
+    /// Convierte de forma segura un punto de código Unicode a su representación de texto UTF-16,
+    /// evitando excepciones por caracteres fuera de rango o subrogados no válidos.
+    /// </summary>
+    public static string SafeConvertFromUtf32(int code)
+    {
+        if (code >= 0 && code <= 0x10FFFF && (code < 0xD800 || code > 0xDFFF))
+        {
+            try
+            {
+                return char.ConvertFromUtf32(code);
+            }
+            catch
+            {
+            }
+        }
+        return "\uFFFD";
+    }
+
     private static FontFamily GetFontFamily(FormFontDescription? font)
     {
         if (font != null && !string.IsNullOrWhiteSpace(font.Name))
         {
-            return new FontFamily($"{font.Name}, Tahoma, Arial");
+            try
+            {
+                return new FontFamily($"{font.Name}, Tahoma, Arial");
+            }
+            catch
+            {
+                return DefaultFontFamily;
+            }
         }
         return DefaultFontFamily;
     }

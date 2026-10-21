@@ -1,0 +1,130 @@
+<Window x:Class="ViBa7.IDE.Dialogs.ObjectBrowserWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Examinador de Objetos"
+        Icon="../Resources/ViBa7-x86.ico"
+        Height="640" Width="880"
+        MinHeight="450" MinWidth="650"
+        WindowStartupLocation="CenterOwner"
+        Background="#F4F5F7">
+    <Grid Margin="8">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/> <!-- 0. Barra Superior de Búsqueda y Bibliotecas -->
+            <RowDefinition Height="*"/>    <!-- 1. Visor de Clases y Miembros -->
+            <RowDefinition Height="Auto"/> <!-- 2. Divisor -->
+            <RowDefinition Height="140" MinHeight="80"/> <!-- 3. Panel Inferior de Detalles y Firma -->
+        </Grid.RowDefinitions>
+
+        <!-- 0. Barra Superior -->
+        <Grid Grid.Row="0" Margin="0,0,0,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="240"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Selector de Biblioteca -->
+            <ComboBox x:Name="CboLibraries" Grid.Column="0" Height="26" VerticalContentAlignment="Center"
+                      SelectionChanged="CboLibraries_SelectionChanged" ToolTip="Biblioteca a examinar"/>
+
+            <!-- Cuadro de Búsqueda -->
+            <Border Grid.Column="1" Margin="8,0,0,0" Background="White" BorderBrush="#D0D5DD" BorderThickness="1" CornerRadius="3" Padding="4,2">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="🔍" VerticalAlignment="Center" Margin="4,0,6,0" Foreground="#666666" FontSize="11.5"/>
+                    <TextBox x:Name="TxtSearch" Grid.Column="1" BorderThickness="0" Background="Transparent" VerticalAlignment="Center"
+                             FontSize="12" TextChanged="TxtSearch_TextChanged" ToolTip="Buscar clases, métodos, propiedades, eventos o constantes"/>
+                    <Button x:Name="BtnClearSearch" Grid.Column="2" Content="✕" Width="20" Height="20" Background="Transparent" BorderThickness="0"
+                            Foreground="#888888" Cursor="Hand" Click="BtnClearSearch_Click" ToolTip="Limpiar búsqueda"/>
+                </Grid>
+            </Border>
+
+            <!-- Botones de Historial de Navegación -->
+            <Button x:Name="BtnBack" Grid.Column="2" Content="←" Width="28" Height="26" Margin="6,0,0,0"
+                    ToolTip="Navegar hacia atrás" Click="BtnBack_Click" IsEnabled="False"/>
+            <Button x:Name="BtnForward" Grid.Column="3" Content="→" Width="28" Height="26" Margin="4,0,0,0"
+                    ToolTip="Navegar hacia adelante" Click="BtnForward_Click" IsEnabled="False"/>
+
+            <!-- Botón Ir a Definición en Código -->
+            <Button x:Name="BtnGoToDefinition" Grid.Column="4" Content="Ver Definición (F7)" Height="26" Padding="10,0" Margin="8,0,0,0"
+                    FontWeight="SemiBold" Click="BtnGoToDefinition_Click" ToolTip="Saltar a la declaración en el editor de código"/>
+        </Grid>
+
+        <!-- 1. Visor de Clases y Miembros -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" MinWidth="180"/>
+                <ColumnDefinition Width="6"/>
+                <ColumnDefinition Width="1.3*" MinWidth="220"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Panel Izquierdo: Clases / Contenedores -->
+            <DockPanel Grid.Column="0">
+                <TextBlock DockPanel.Dock="Top" Text="Clases:" FontWeight="SemiBold" FontSize="11.5" Foreground="#374151" Margin="2,0,0,4"/>
+                <Border Background="#FFFFFF" BorderBrush="#D0D5DD" BorderThickness="1" CornerRadius="3">
+                    <ListBox x:Name="LstClasses" BorderThickness="0" SelectionMode="Single"
+                             SelectionChanged="LstClasses_SelectionChanged"
+                             ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Auto">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal" Margin="2,2">
+                                    <TextBlock Text="{Binding BadgeIcon}" FontSize="13" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="{Binding DisplayName}" FontSize="12" FontWeight="SemiBold" Foreground="#111827" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Border>
+            </DockPanel>
+
+            <!-- Separador redimensionable -->
+            <GridSplitter Grid.Column="1" Width="6" HorizontalAlignment="Center" Background="#E5E7EB" Cursor="SizeWE"/>
+
+            <!-- Panel Derecho: Miembros de la Clase Seleccionada -->
+            <DockPanel Grid.Column="2">
+                <TextBlock x:Name="TxtMembersHeader" DockPanel.Dock="Top" Text="Miembros:" FontWeight="SemiBold" FontSize="11.5" Foreground="#374151" Margin="2,0,0,4"/>
+                <Border Background="#FFFFFF" BorderBrush="#D0D5DD" BorderThickness="1" CornerRadius="3">
+                    <ListBox x:Name="LstMembers" BorderThickness="0" SelectionMode="Single"
+                             SelectionChanged="LstMembers_SelectionChanged" MouseDoubleClick="LstMembers_MouseDoubleClick"
+                             ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Auto">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="2,2">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="{Binding BadgeIcon}" FontSize="13" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="12" FontWeight="SemiBold" Foreground="#111827" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="2" Text="{Binding TypeOrScopeDisplay}" FontSize="11" Foreground="#6B7280" Margin="8,0,4,0" VerticalAlignment="Center"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Border>
+            </DockPanel>
+        </Grid>
+
+        <!-- 2. Divisor Inferior -->
+        <GridSplitter Grid.Row="2" Height="6" HorizontalAlignment="Stretch" Background="#E5E7EB" Cursor="SizeNS" Margin="0,2,0,2"/>
+
+        <!-- 3. Panel Inferior: Firma y Documentación del Miembro -->
+        <Border Grid.Row="3" Background="#FFFFFF" BorderBrush="#D0D5DD" BorderThickness="1" CornerRadius="3" Padding="10">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <TextBlock x:Name="TxtSignature" FontFamily="Consolas, Segoe UI" FontSize="12" FontWeight="Bold"
+                               Foreground="#003399" TextWrapping="Wrap" Margin="0,0,0,4"/>
+                    <TextBlock x:Name="TxtMemberOf" FontSize="11" Foreground="#6B7280" Margin="0,0,0,6"/>
+                    <TextBlock x:Name="TxtDescription" FontSize="11.5" Foreground="#374151" TextWrapping="Wrap"/>
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+    </Grid>
+</Window>

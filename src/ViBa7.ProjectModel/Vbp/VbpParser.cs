@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Text;
 using ViBa7.ProjectModel.ActiveX;
@@ -136,6 +136,11 @@ public static class VbpParser
                     });
                     break;
             }
+        }
+
+        foreach (var item in project.Items)
+        {
+            item.ContainingProject = project;
         }
 
         return project;

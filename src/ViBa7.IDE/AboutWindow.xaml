@@ -2,7 +2,8 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Acerca de ViBa7-x86 IDE"
-        Height="480" Width="530"
+        Icon="Resources/ViBa7-x86.ico"
+        Height="540" Width="580"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
         ShowInTaskbar="False"
@@ -14,16 +15,29 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <StackPanel Grid.Row="0" Margin="0,0,0,14">
-            <TextBlock Text="ViBa7-x86 IDE" FontSize="20" FontWeight="Bold" Foreground="#003399"/>
-            <TextBlock x:Name="TxtAuthor" Text="Author: David Rojas [Axio.UK]" FontSize="12.5" FontWeight="SemiBold" Foreground="#222222" Margin="0,4,0,0"/>
-            <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
-                <TextBlock x:Name="TxtVersion" Text="Versión: 00.001.0576" FontSize="12" FontWeight="Bold" Foreground="#0055AA"/>
-                <TextBlock Text="  •  " FontSize="12" Foreground="#888888"/>
-                <TextBlock x:Name="TxtLicenseHeader" Text="Licencia: GPL-3.0" FontSize="12" FontWeight="SemiBold" Foreground="#107C41"/>
+        <Grid Grid.Row="0" Margin="0,0,0,14">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Imagen ViBa7.png del producto -->
+            <Border Grid.Column="0" Margin="0,0,16,0" VerticalAlignment="Center" Background="Transparent" CornerRadius="4">
+                <Image Source="Resources/ViBa7.png" Width="96" Height="96" Stretch="Uniform"
+                       RenderOptions.BitmapScalingMode="HighQuality"/>
+            </Border>
+
+            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                <TextBlock Text="ViBa7-x86 IDE" FontSize="20" FontWeight="Bold" Foreground="#003399"/>
+                <TextBlock x:Name="TxtAuthor" Text="Author: David Rojas [Axio.UK]" FontSize="12.5" FontWeight="SemiBold" Foreground="#222222" Margin="0,4,0,0"/>
+                <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
+                    <TextBlock x:Name="TxtVersion" Text="Versión: 00.001.0636" FontSize="12" FontWeight="Bold" Foreground="#0055AA"/>
+                    <TextBlock Text="  •  " FontSize="12" Foreground="#888888"/>
+                    <TextBlock x:Name="TxtLicenseHeader" Text="Licencia: GPL-3.0" FontSize="12" FontWeight="SemiBold" Foreground="#107C41"/>
+                </StackPanel>
+                <TextBlock Text="Entorno de Desarrollo y Diseñador Visual ViBa7 (Compatibilidad con VB6 SP6 / Win-x86)" FontSize="11" Foreground="#555555" Margin="0,4,0,0" TextWrapping="Wrap"/>
             </StackPanel>
-            <TextBlock Text="Entorno de Desarrollo y Diseñador Visual ViBa7 (Compatibilidad con VB6 SP6 / Win-x86)" FontSize="11" Foreground="#555555" Margin="0,4,0,0"/>
-        </StackPanel>
+        </Grid>
 
         <Border Grid.Row="1" Background="White" BorderBrush="#D0D5DD" BorderThickness="1" CornerRadius="4" Padding="14">
             <ScrollViewer VerticalScrollBarVisibility="Auto">

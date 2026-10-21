@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -23,11 +23,14 @@ public class UserControlExposedProperty
     {
         get
         {
+            // Propiedades de códigos de caracteres de iconos (ej. IconCharCode, CharCode) deben ser de tipo Text para admitir cadenas hex ("&HEA01", "EA01", "U+EA01")
+            if (Name.Contains("CharCode", StringComparison.OrdinalIgnoreCase)) return DesignerPropertyType.Text;
             if (Choices.Count > 0) return DesignerPropertyType.EnumChoice;
             if (DesignerPropertyFactory.IsColorProperty(Name, TypeName, DefaultValue)) return DesignerPropertyType.ColorHex;
             string t = (TypeName ?? string.Empty).Trim().ToUpperInvariant();
             if (t.Equals("BOOLEAN", StringComparison.OrdinalIgnoreCase)) return DesignerPropertyType.Boolean;
             if (t.Contains("PICTURE") || t.Contains("STDPIC") || t.Contains("IPICTURE") || Name.Contains("Picture", StringComparison.OrdinalIgnoreCase)) return DesignerPropertyType.Picture;
+            if (Name.Equals("FontName", StringComparison.OrdinalIgnoreCase) || (Name.Contains("Font", StringComparison.OrdinalIgnoreCase) && Name.EndsWith("Name", StringComparison.OrdinalIgnoreCase))) return DesignerPropertyType.EnumChoice;
             if (t.Contains("FONT") || Name.Contains("Font", StringComparison.OrdinalIgnoreCase)) return DesignerPropertyType.FontDescription;
             if (t.Equals("INTEGER", StringComparison.OrdinalIgnoreCase) ||
                 t.Equals("LONG", StringComparison.OrdinalIgnoreCase) ||
@@ -187,6 +190,11 @@ public static class UserControlPropertyExtractor
             {
                 exposed.Choices = new List<DesignerPropertyChoice>(enumChoices);
             }
+            else if (exposed.Name.Equals("FontName", StringComparison.OrdinalIgnoreCase) ||
+                     (exposed.Name.Contains("Font", StringComparison.OrdinalIgnoreCase) && exposed.Name.EndsWith("Name", StringComparison.OrdinalIgnoreCase)))
+            {
+                exposed.Choices = DesignerPropertyFactory.GetSystemFontChoices();
+            }
 
             // Asociar valor por defecto si existe
             if (defaults.TryGetValue(propName, out var defVal) && !string.IsNullOrEmpty(defVal))
@@ -211,6 +219,12 @@ public static class UserControlPropertyExtractor
             if (DesignerPropertyFactory.IsColorProperty(propName, null, defVal))
             {
                 exposed.TypeName = "OLE_COLOR";
+            }
+            else if (propName.Equals("FontName", StringComparison.OrdinalIgnoreCase) ||
+                     (propName.Contains("Font", StringComparison.OrdinalIgnoreCase) && propName.EndsWith("Name", StringComparison.OrdinalIgnoreCase)))
+            {
+                exposed.TypeName = "String";
+                exposed.Choices = DesignerPropertyFactory.GetSystemFontChoices();
             }
             else if (propName.Contains("Font", StringComparison.OrdinalIgnoreCase))
             {
@@ -250,6 +264,15 @@ public static class UserControlPropertyExtractor
                 if (DesignerPropertyFactory.IsColorProperty(exp.Name, null, exp.DefaultValue))
                 {
                     exp.TypeName = "OLE_COLOR";
+                }
+                else if (exp.Name.Equals("FontName", StringComparison.OrdinalIgnoreCase) ||
+                         (exp.Name.Contains("Font", StringComparison.OrdinalIgnoreCase) && exp.Name.EndsWith("Name", StringComparison.OrdinalIgnoreCase)))
+                {
+                    exp.TypeName = "String";
+                    if (exp.Choices.Count == 0)
+                    {
+                        exp.Choices = DesignerPropertyFactory.GetSystemFontChoices();
+                    }
                 }
                 else if (exp.Name.Contains("Font", StringComparison.OrdinalIgnoreCase))
                 {

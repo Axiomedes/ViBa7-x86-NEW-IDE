@@ -12,6 +12,8 @@
 
   <ItemGroup>
     <EmbeddedResource Include="SyntaxHighlighting\VB6.xshd" />
+    <Resource Include="Resources\ViBa7-x86.ico" />
+    <Resource Include="Resources\ViBa7.png" />
   </ItemGroup>
 
   <PropertyGroup>
@@ -22,6 +24,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <ApplicationIcon>Resources\ViBa7-x86.ico</ApplicationIcon>
     <RootNamespace>ViBa7.IDE</RootNamespace>
     <AssemblyName>ViBa7.IDE</AssemblyName>
     <ApplicationTitle>ViBa7-x86 IDE</ApplicationTitle>

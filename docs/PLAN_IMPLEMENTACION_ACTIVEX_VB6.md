@@ -74,31 +74,38 @@ flowchart TD
 
 ## 3. Plan de Acción Detallado por Fases (Hitos 1 al 8)
 
-### Fase 1: Persistencia Fiel `.vbp` / `.frm` / `.frx` y Ciclo de Vida OLE (Hitos 2 y 3 del Manual)
-1. **Emisión de Cabeceras `Object =` en `.frm`** (`FormDesignSerializer.cs`): Serializar al inicio del `.frm` todas las entradas `FormDesignDocument.RequiredObjects` y referencias `OcxComponentReference` activas con formato `Object = "{GUID}#major.minor#lcid"; "NombreArchivo.ocx"`.
-2. **Soporte de Blobs Binarios ActiveX en `.frx` y `.ctx`** (`FrxResourceFile.cs`, `FormDesignParser.cs`): Leer y escribir bloques binarios arbitrarios referenciados mediante `Object.zyx = "Form1.frx":0000` y propiedades binarias.
-3. **Adaptador de Persistencia COM Completo** (`DynamicActiveXControl.cs`, `Ole32Interop.cs`): Implementar `CreateStreamOnHGlobal`, `IPersistStreamInit::Load/Save`, `IPersistStream`, `IPersistStorage` y soporte de `SAFEARRAY`/`IFontDisp`/`IPictureDisp` en `OlePropertyBag`.
-4. **Máquina de Estados OLE y Licencias (`IClassFactory2`)**: Soportar `GetLicInfo`, `RequestLicKey` y `CreateInstanceLic`, formalizando las transiciones `Created -> Sited -> Loaded -> Visible -> InPlaceActive -> UIActive -> Disposed`.
+### Fase 1: Persistencia Fiel `.vbp` / `.frm` / `.frx` y Ciclo de Vida OLE (Hitos 2 y 3 del Manual) — [COMPLETADA]
+1. **[x] Emisión de Cabeceras `Object =` en `.frm`** (`FormDesignSerializer.cs`, `FormDesignParser.cs`, `VbControlMemberCatalog.cs`): Serializar al inicio del `.frm` todas las entradas `ObjectDeclarations` y referencias OCX activas con formato `Object = "{GUID}#major.minor#lcid"; "NombreArchivo.ocx"`, preservando bloques `BeginProperty` anidados y propiedades con puntos/índices (`Object.zyx`, `TabCaption(0)`).
+2. **[x] Soporte de Blobs Binarios ActiveX en `.frx` y `.ctx`** (`FrxResourceFile.cs`, `FormDesignParser.cs`): Leer y escribir bloques binarios arbitrarios referenciados mediante `Object.zyx = "Form1.frx":0000` y propiedades binarias preservando intactos los offsets existentes (`OriginalFrxBytes`).
+3. **[x] Adaptador de Persistencia COM Completo** (`DynamicActiveXControl.cs`, `Ole32Interop.cs`, `ActiveXInPlaceHost.cs`): Implementar `CreateStreamOnHGlobal`, `IPersistStreamInit::Load/Save`, `IPersistStream::Load/Save`, `IPersistStorage` y soporte de `byte[]` (`SAFEARRAY(VT_UI1)`) en `VbPropertyBag`.
+4. **[x] Máquina de Estados OLE y Licencias (`IClassFactory2`)**: Soportar `GetLicInfo`, `RequestLicKey` y `CreateInstanceLic`, formalizando las transiciones `Uninitialized -> Created -> Sited -> Loaded -> Visible -> InPlaceActive -> UIActive -> Disposed` y el registro diagnóstico estructurado.
 
-### Fase 2: Contenedor OLE Completo, `VBControlExtender`, Tipos COM y `PropertyNotifySink` (Hito 3 y Sección 5)
-1. **`IPropertyNotifySink` e `IAdviseSink`**: Sincronizar cambios realizados desde páginas de propiedades nativas (`OleCreatePropertyFrame`) hacia el `PropertyGridPanel` y refrescar el snapshot ante repintados asíncronos (`IViewObject::SetAdvise`).
-2. **Objeto Extendido (`VBControlExtender`) y `TransformCoords`**: Implementar `IOleControlSite::GetExtendedControl` y conversión matemática real entre `HIMETRIC` (`2540/in`) y `Twips` (`1440/in`).
-3. **Propiedades Ambientales Completas**: Soportar `DISPID_AMBIENT_FONT (-703)` (`IFontDisp`), `DISPID_AMBIENT_PALETTE (-726)` y `OnAmbientPropertyChange`.
-4. **Conversión Avanzada de Tipos COM**: Soportar `StdFont`/`IFontDisp`, `StdPicture`/`IPictureDisp`, `OLE_COLOR`, `SAFEARRAY` y propiedades indexadas (`TextMatrix(r, c)`).
+### Fase 2: Contenedor OLE Completo, `VBControlExtender`, Tipos COM y `PropertyNotifySink` (Hito 3 y Sección 5) ✅ COMPLETADA
+1. **[x] `IPropertyNotifySink` e `IAdviseSink`**: Sincronizar cambios realizados desde páginas de propiedades nativas (`OleCreatePropertyFrame`) hacia el `PropertyGridPanel` y refrescar el snapshot ante repintados asíncronos (`IViewObject::SetAdvise`).
+2. **[x] Objeto Extendido (`VBControlExtender`) y `TransformCoords`**: Implementar `IOleControlSite::GetExtendedControl` y conversión matemática real entre `HIMETRIC` (`2540/in`) y `Twips` (`1440/in`).
+3. **[x] Propiedades Ambientales Completas**: Soportar `DISPID_AMBIENT_FONT (-703)` (`IFontDisp`), `DISPID_AMBIENT_PALETTE (-726)` y `OnAmbientPropertyChange`.
+4. **[x] Conversión Avanzada de Tipos COM**: Soportar `StdFont`/`IFontDisp`, `StdPicture`/`IPictureDisp`, `OLE_COLOR`, `SAFEARRAY` y propiedades indexadas (`TextMatrix(r, c)`).
 
-### Fase 3: Alojamiento Interactivo en Modo Ejecución (`ActiveXRuntimeHost`) y Puente de Automatización (Hitos 4 y 5)
-1. **Creación de `ActiveXRuntimeHost` (`HwndHost` Real)**: Alojar el `HWND` nativo del OCX en `LiveFormWindow` con `Ambient.UserMode = True`, transfiriendo el estado persistido en diseño y delegando teclado a `IOleInPlaceActiveObject::TranslateAccelerator`.
-2. **Integración con `LiveFormWindow` y `LiveControlProxy`**: Enrutar `GetProperty`, `SetProperty` (incluyendo propiedades indexadas) e `InvokeMethod` al `IDispatch` del control y sus subobjetos COM (`Nodes`, `ListItems`, `ColumnHeaders`).
-3. **Activación UI-Active en Diseño (`OLEIVERB_UIACTIVATE`) e `ISimpleFrameSite`**: Permitir edición interactiva in-place en diseño (ej. cambiar pestañas en `SSTab`) y contención de controles hijos.
+### Fase 3: Alojamiento Interactivo en Modo Ejecución (`ActiveXRuntimeHost`) y Puente de Automatización (Hitos 4 y 5) ✅ COMPLETADA
+1. **[x] Creación de `ActiveXRuntimeHost` (`HwndHost` Real)**: Alojar el `HWND` nativo del OCX en `LiveFormWindow` con `Ambient.UserMode = True`, transfiriendo el estado persistido en diseño y delegando teclado a `IOleInPlaceActiveObject::TranslateAccelerator`.
+2. **[x] Integración con `LiveFormWindow` y `LiveControlProxy`**: Enrutar `GetProperty`, `SetProperty` (incluyendo propiedades indexadas) e `InvokeMethod` al `IDispatch` del control y sus subobjetos COM (`Nodes`, `ListItems`, `ColumnHeaders`).
+3. **[x] Activación UI-Active en Diseño (`OLEIVERB_UIACTIVATE`) e `ISimpleFrameSite`**: Permitir edición interactiva in-place en diseño (ej. cambiar pestañas en `SSTab`) y contención de controles hijos.
 
-### Fase 4: Eventos COM en Vivo (`IConnectionPoint` / `ActiveXEventSink`) (Hito 4)
-1. **Implementación de `ActiveXEventSink`**: Conectar la interfaz `IMPLTYPEFLAG_FSOURCE` mediante `IConnectionPointContainer::FindConnectionPoint` y `Advise`, despachando llamadas `IDispatch::Invoke` por `DISPID`.
-2. **Soporte de `VT_BYREF` e `Index`**: Propagar cambios en argumentos `ByRef` de vuelta al control nativo e inyectar `Index As Integer` en arreglos de controles OCX.
-3. **Generación de Stubs de Eventos en el Editor**: Generar la firma exacta del evento predeterminado del TypeLib al hacer doble clic sobre un OCX en el diseñador.
+### Fase 4: Eventos COM en Vivo (`IConnectionPoint` / `ActiveXEventSink`) (Hito 4) ✅ COMPLETADA
+1. **[x] Implementación de `ActiveXEventSink`**: Conectar la interfaz `IMPLTYPEFLAG_FSOURCE` mediante `IConnectionPointContainer::FindConnectionPoint` y `Advise`, despachando llamadas `IDispatch::Invoke` por `DISPID` respetando el orden inverso de la ABI COM (`rgvarg[cArgs - 1 - i]`) y puenteando objetos COM hijos a `LiveComDispatchProxy`.
+2. **[x] Soporte de `VT_BYREF` e `Index`**: Propagar cambios en argumentos `ByRef` (`KeyAscii`, `Cancel`, `Button`, `Shift`, etc.) de vuelta al llamador nativo en memoria COM e inyectar `Index As Integer` como primer argumento en matrices de controles OCX (`ctrl.Index.HasValue`).
+3. **[x] Generación de Stubs de Eventos en el Editor**: Generar la firma exacta del evento predeterminado del TypeLib (`VbControlMemberCatalog.TryGetDefaultEvent`, `MSFlexGrid` -> `RowColChange`, `TreeView` -> `NodeClick(ByVal Node As Node)`, `ListView` -> `ItemClick(ByVal Item As ListItem)`, `SSTab` -> `Click(PreviousTab As Integer)`, etc.) al hacer doble clic sobre un OCX en el diseñador.
 
-### Fase 5: Compilación Nativa/Ejecutable y Soporte `UserControl` `.ctl`/`.ctx` (Hitos 6 y 7)
-1. **Compilación de Proyectos con OCX (`Vb6ProjectCompiler.cs`)**: Incrustar estado `.frx` y licencias `RequestLicKey`, instanciar `ActiveXRuntimeHost` y enlazar eventos en el `.exe` compilado, con soporte opcional de manifiestos SxS Reg-Free COM.
-2. **Motor Completo de `UserControl` (`.ctl`/`.ctx`)**: Ciclo de vida completo (`Initialize`, `InitProperties`, `ReadProperties`, `WriteProperties`, `Resize`, `Paint`, `Terminate`), `PropertyBag` real y `RaiseEvent`.
+### Fase 5: Compilación Nativa/Ejecutable y Soporte `UserControl` `.ctl`/`.ctx` (Hitos 6 y 7) ✅ COMPLETADA
+1. **[x] Compilación de Proyectos con OCX (`Vb6ProjectCompiler.cs`)**: Detección automática de dependencias OCX, configuración de `wExternalComponentCount` en `VBHeader` de la estructura nativa PE/MSVBVM60, e integración de `Vb6ManifestGenerator` para emitir manifiestos SxS Reg-Free COM (`.exe.manifest` con `<file>`, `<comClass>` y `<typelib>`).
+2. **[x] Motor Completo de `UserControl` (`.ctl`/`.ctx`)**: Implementación de `VbPropertyBagRuntime` (`ReadProperty`, `WriteProperty`, serialización binaria canónica), objetos intrínsecos `Ambient` (`VbUserControlAmbient`) y `Extender` (`VbUserControlExtender`), ciclo de vida interactivo (`Initialize`, `InitProperties`/`ReadProperties`, `Resize`, `Show`, `Paint`, `Hide`, `Terminate`) e instrucción `RaiseEvent` en el intérprete enrutando eventos al formulario contenedor.
 
-### Fase 6: Batería de Pruebas de Aceptación y Telemetría de Estabilidad (Hito 8 y Sección 19)
-1. **Diagnóstico Estructurado y Monitor de Recursos**: Registro detallado de `{ Stage, Clsid, Iid, HResultHex, ErrorInfoDescription }` y verificación de cero fugas de objetos GDI/USER/COM tras ciclos repetidos de apertura/cierre.
+### Fase 6: Batería de Pruebas de Aceptación y Telemetría de Estabilidad (Hito 8 y Sección 19) ✅ COMPLETADA
+1. **[x] Diagnóstico Estructurado y Telemetría COM (`ActiveXDiagnosticsLogger.cs`)**: Registro thread-safe de telemetría de bajo nivel para cada etapa del ciclo de vida `{ Stage, Clsid, ProgId, ControlName, Iid, HResult, HResultHex, ErrorInfoDescription, ThreadId, IsStaThread, TimestampUtc, Detail }` con captura automática de `IErrorInfo` nativo (`GetErrorInfo`), verificación de apartamento STA y exportación de reportes diagnósticos a texto y JSON estructurado.
+2. **[x] Monitor de Recursos de Bajo Nivel y Fugas (`ActiveXResourceMonitor.cs`)**: Supervisión de handles nativos GDI y USER mediante P/Invoke de `GetGuiResources` (`GR_GDIOBJECTS`, `GR_USEROBJECTS`), memoria del proceso y balance estricto de referencias COM activas (`TrackComObjectCreated` / `TrackComObjectReleased`).
+3. **[x] Batería de Pruebas de Aceptación y Estrés de 100 Ciclos (`Phase6ActiveXAcceptanceAndStabilityTests.cs`)**: Batería automatizada según la Sección 19 del Manual Técnico cubriendo:
+   - Catálogo y descubrimiento de controles ActiveX de referencia (`MSFlexGrid`, `TreeView`, `ListView`, `SSTab`, `RichTextBox`, `ProgressBar`, `StatusBar`, `Slider`, `TabStrip`, `Winsock`, `MSComm`, `WebBrowser`).
+   - Prueba de estrés de 100 ciclos de instanciación y liberación con verificación de estabilidad de handles (tolerancia acotada a cachés del SO).
+   - Resiliencia y preservación al 100% de datos desconocidos en controles ausentes/no registrados sin corrupción del `.frm`.
+   - Despacho de eventos COM con mutación bidireccional `ByRef` e inyección de `Index As Integer` en matrices de controles.
+   - Fidelidad en transformaciones métricas HIMETRIC <-> Twips dentro de 1 Twip de tolerancia.

@@ -1,0 +1,110 @@
+<Window x:Class="ViBa7.IDE.Dialogs.FontPickerDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Fuente" Height="440" Width="520"
+        WindowStartupLocation="CenterOwner" ResizeMode="NoResize"
+        ShowInTaskbar="False" Background="#F0F0F0"
+        FontFamily="Segoe UI" FontSize="11.5">
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Columnas: Fuente | Estilo de fuente | Tamaño -->
+        <Grid Grid.Row="0" Height="210">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="2.2*"/>
+                <ColumnDefinition Width="10"/>
+                <ColumnDefinition Width="1.5*"/>
+                <ColumnDefinition Width="10"/>
+                <ColumnDefinition Width="1.0*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- 1. Fuente (Tipografía) -->
+            <Grid Grid.Column="0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <TextBlock Grid.Row="0" Text="Fuente:" Margin="0,0,0,4"/>
+                <TextBox x:Name="TxtFontFamily" Grid.Row="1" Height="22" Margin="0,0,0,4"
+                         TextChanged="TxtFontFamily_TextChanged"/>
+                <ListBox x:Name="LstFontFamilies" Grid.Row="2"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         SelectionChanged="LstFontFamilies_SelectionChanged"/>
+            </Grid>
+
+            <!-- 2. Estilo de fuente -->
+            <Grid Grid.Column="2">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <TextBlock Grid.Row="0" Text="Estilo de fuente:" Margin="0,0,0,4"/>
+                <TextBox x:Name="TxtFontStyle" Grid.Row="1" Height="22" Margin="0,0,0,4" IsReadOnly="True" Background="#F9F9F9"/>
+                <ListBox x:Name="LstFontStyles" Grid.Row="2"
+                         SelectionChanged="LstFontStyles_SelectionChanged">
+                    <ListBoxItem Content="Normal"/>
+                    <ListBoxItem Content="Cursiva" FontStyle="Italic"/>
+                    <ListBoxItem Content="Negrita" FontWeight="Bold"/>
+                    <ListBoxItem Content="Negrita Cursiva" FontWeight="Bold" FontStyle="Italic"/>
+                </ListBox>
+            </Grid>
+
+            <!-- 3. Tamaño -->
+            <Grid Grid.Column="4">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <TextBlock Grid.Row="0" Text="Tamaño:" Margin="0,0,0,4"/>
+                <TextBox x:Name="TxtFontSize" Grid.Row="1" Height="22" Margin="0,0,0,4"
+                         TextChanged="TxtFontSize_TextChanged"/>
+                <ListBox x:Name="LstFontSizes" Grid.Row="2"
+                         SelectionChanged="LstFontSizes_SelectionChanged"/>
+            </Grid>
+        </Grid>
+
+        <!-- Efectos y Muestra -->
+        <Grid Grid.Row="1" Margin="0,12,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="1.8*"/>
+                <ColumnDefinition Width="12"/>
+                <ColumnDefinition Width="2.8*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Efectos -->
+            <GroupBox Grid.Column="0" Header="Efectos" Padding="8,6">
+                <StackPanel VerticalAlignment="Center">
+                    <CheckBox x:Name="ChkStrikethrough" Content="Tachado" Margin="0,4"
+                              Checked="Effect_Changed" Unchecked="Effect_Changed"/>
+                    <CheckBox x:Name="ChkUnderline" Content="Subrayado" Margin="0,4"
+                              Checked="Effect_Changed" Unchecked="Effect_Changed"/>
+                </StackPanel>
+            </GroupBox>
+
+            <!-- Muestra (Preview) -->
+            <GroupBox Grid.Column="2" Header="Muestra" Padding="8">
+                <Border Background="White" BorderBrush="#C0CAD4" BorderThickness="1" CornerRadius="2">
+                    <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+                        <TextBlock x:Name="TxtPreview" Text="AaBbYyZz 12345"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   TextAlignment="Center" Margin="8"/>
+                    </ScrollViewer>
+                </Border>
+            </GroupBox>
+        </Grid>
+
+        <!-- Botones Aceptar / Cancelar -->
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
+            <Button Content="Aceptar" Width="82" Height="25" Margin="0,0,8,0" IsDefault="True" Click="BtnOk_Click"/>
+            <Button Content="Cancelar" Width="82" Height="25" IsCancel="True" Click="BtnCancel_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>

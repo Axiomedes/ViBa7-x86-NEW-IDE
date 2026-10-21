@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Text;
 using ViBa7.ProjectModel.Documents;
@@ -60,6 +60,20 @@ public static class VbgParser
             }
         }
 
+        foreach (var p in group.Projects)
+        {
+            p.ParentGroup = group;
+        }
+
+        // Si no se especificó un StartupProject explícito en el .vbg, clasificar automáticamente:
+        // En VB6 se prefiere el proyecto estándar ejecutable (Type=Exe); si no, el primer proyecto.
+        if (string.IsNullOrWhiteSpace(group.StartupProjectPath) && group.Projects.Count > 0)
+        {
+            var exeProj = group.Projects.FirstOrDefault(p => p.ProjectType.Equals("Exe", StringComparison.OrdinalIgnoreCase));
+            var primary = exeProj ?? group.Projects[0];
+            group.StartupProjectPath = primary.ProjectFilePath;
+        }
+
         return group;
     }
 
@@ -76,6 +90,7 @@ public static class VbgParser
             try
             {
                 var project = VbpParser.Parse(fullVbpPath, fallbackEncoding);
+                project.ParentGroup = group;
                 group.Projects.Add(project);
             }
             catch
@@ -84,7 +99,8 @@ public static class VbgParser
                 var placeholder = new VB6Project
                 {
                     ProjectFilePath = fullVbpPath,
-                    Name = Path.GetFileNameWithoutExtension(fullVbpPath)
+                    Name = Path.GetFileNameWithoutExtension(fullVbpPath),
+                    ParentGroup = group
                 };
                 group.Projects.Add(placeholder);
             }
@@ -95,7 +111,8 @@ public static class VbgParser
             var placeholder = new VB6Project
             {
                 ProjectFilePath = fullVbpPath,
-                Name = Path.GetFileNameWithoutExtension(fullVbpPath)
+                Name = Path.GetFileNameWithoutExtension(fullVbpPath),
+                ParentGroup = group
             };
             group.Projects.Add(placeholder);
         }

@@ -1,4 +1,4 @@
-﻿<UserControl x:Class="ViBa7.IDE.Designer.PropertyGridPanel"
+<UserControl x:Class="ViBa7.IDE.Designer.PropertyGridPanel"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
@@ -74,12 +74,26 @@
             </DockPanel>
         </DataTemplate>
 
+        <DataTemplate x:Key="FontEditorTemplate">
+            <DockPanel LastChildFill="True">
+                <Button DockPanel.Dock="Right" Content="..." Width="22" Height="20" Padding="0" Margin="1,0,2,0"
+                        Background="#ECECEC" BorderBrush="#C0CAD4" BorderThickness="1" Cursor="Hand"
+                        FontWeight="Bold"
+                        ToolTip="Seleccionar fuente tipográfica (Font / StdFont)..." Click="BtnBrowseFont_Click"/>
+                <TextBox Text="{Binding CurrentValue, Mode=OneWay}" FontSize="11" Padding="4,2"
+                         BorderThickness="0" VerticalContentAlignment="Center"
+                         IsReadOnly="True" Background="Transparent" Cursor="Hand"
+                         MouseDoubleClick="PropertyFont_MouseDoubleClick"/>
+            </DockPanel>
+        </DataTemplate>
+
         <local:PropertyTemplateSelector x:Key="PropValueTemplateSelector"
             TextTemplate="{StaticResource TextEditorTemplate}"
             ChoiceTemplate="{StaticResource ChoiceEditorTemplate}"
             ColorTemplate="{StaticResource ColorEditorTemplate}"
             PictureTemplate="{StaticResource PictureEditorTemplate}"
-            CustomDialogTemplate="{StaticResource CustomDialogEditorTemplate}"/>
+            CustomDialogTemplate="{StaticResource CustomDialogEditorTemplate}"
+            FontTemplate="{StaticResource FontEditorTemplate}"/>
     </UserControl.Resources>
 
     <Grid>

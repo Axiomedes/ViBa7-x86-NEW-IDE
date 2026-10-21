@@ -7,6 +7,7 @@
         xmlns:exec="clr-namespace:ViBa7.IDE.Execution"
         mc:Ignorable="d"
         Title="ViBa7-x86 IDE - Entorno de Desarrollo y Diseñador Visual (Compatibilidad con VB6)"
+        Icon="Resources/ViBa7-x86.ico"
         Height="720" Width="1100"
         MinHeight="400" MinWidth="600"
         WindowStartupLocation="CenterScreen">
@@ -66,6 +67,7 @@
                 <MenuItem x:Name="MenuSave" Header="_Guardar" InputGestureText="Ctrl+S" Click="MenuSave_Click"/>
                 <MenuItem x:Name="MenuSaveAs" Header="Guardar c_omo..." Click="MenuSaveAs_Click"/>
                 <MenuItem x:Name="MenuSaveAll" Header="Guardar _todo" InputGestureText="Ctrl+Shift+S" Click="MenuSaveAll_Click"/>
+                <MenuItem x:Name="MenuSaveProjectGroup" Header="Guardar _Grupo de Proyectos (.vbg)" Click="MenuSaveProjectGroup_Click" Visibility="Collapsed"/>
                 <MenuItem x:Name="MenuCloseDoc" Header="_Cerrar documento" InputGestureText="Ctrl+W" Click="MenuCloseDoc_Click"/>
                 <MenuItem x:Name="MenuCloseAll" Header="Cerrar _todo (Proyecto y Documentos)" InputGestureText="Ctrl+Shift+W" Click="MenuCloseAll_Click"/>
                 <Separator/>
@@ -102,6 +104,7 @@
                 <MenuItem Header="Navegar hacia a_delante" InputGestureText="Alt+→" Click="MenuNavForward_Click"/>
                 <MenuItem x:Name="MenuViewCode" Header="_Código" InputGestureText="F7" Click="BtnViewCode_Click"/>
                 <MenuItem x:Name="MenuViewObject" Header="_Objeto" InputGestureText="Shift+F7" Click="BtnViewObject_Click"/>
+                <MenuItem x:Name="MenuObjectBrowser" Header="Examinador de _Objetos" InputGestureText="F2" Click="MenuObjectBrowser_Click"/>
                 <Separator/>
                 <MenuItem x:Name="MenuToggleToolbox" Header="_Caja de Herramientas" IsCheckable="True" IsChecked="True" InputGestureText="Ctrl+Alt+X" Click="MenuToggleToolbox_Click"/>
                 <MenuItem x:Name="MenuToggleProjectExplorer" Header="_Explorador de Proyectos" IsCheckable="True" IsChecked="True" Click="MenuToggleProjectExplorer_Click"/>
@@ -120,8 +123,12 @@
                 <MenuItem Header="_Agregar Formulario..." InputGestureText="Ctrl+N" Click="MenuNewForm_Click"/>
                 <MenuItem Header="Agregar _Módulo..." Click="MenuAddModule_Click"/>
                 <MenuItem Header="Agregar Módulo de _Clase..." Click="MenuAddClass_Click"/>
+                <MenuItem x:Name="MenuAddUserControl" Header="Agregar _Control de Usuario (UserControl)..." Click="MenuAddUserControl_Click"/>
                 <Separator/>
+                <MenuItem x:Name="MenuReferences" Header="_Referencias..." Click="MenuReferences_Click"/>
                 <MenuItem Header="_Componentes..." InputGestureText="Ctrl+T" Click="MenuComponents_Click"/>
+                <Separator x:Name="SepGroupOptions" Visibility="Collapsed"/>
+                <MenuItem x:Name="MenuSetStartupProject" Header="_Establecer como Proyecto Principal (Inicio)..." Click="MenuSetStartupProject_Click" Visibility="Collapsed"/>
             </MenuItem>
             <MenuItem Header="_Ejecutar">
                 <MenuItem x:Name="MenuRunStart" Header="_Iniciar" InputGestureText="F5" Click="MenuRunStart_Click">
@@ -262,6 +269,9 @@
                     <Image Source="{StaticResource Icon_TaskList}" Width="16" Height="16"/>
                 </Button>
                 <Separator/>
+                <Button x:Name="BtnToolbarObjectBrowser" ToolTip="Examinador de Objetos (F2)" Click="MenuObjectBrowser_Click" Width="28" Height="24" Padding="0">
+                    <TextBlock Text="📚" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Button>
                 <Button x:Name="BtnToolbarMenuEditor" ToolTip="Editor de Menús (Ctrl+E)" Click="MenuMenuEditor_Click" Width="28" Height="24" Padding="0">
                     <Image Source="{StaticResource Icon_MenuEditor}" Width="16" Height="16"/>
                 </Button>
@@ -538,7 +548,7 @@
                                 </Grid>
                             </Border>
 
-                            <TreeView x:Name="ProjectTreeView" Grid.Row="2" BorderThickness="0" Padding="4" MouseDoubleClick="ProjectTreeView_MouseDoubleClick">
+                            <TreeView x:Name="ProjectTreeView" Grid.Row="2" BorderThickness="0" Padding="4" MouseDoubleClick="ProjectTreeView_MouseDoubleClick" SelectedItemChanged="ProjectTreeView_SelectedItemChanged">
                                 <TreeViewItem Header="Ningún proyecto abierto" IsSelected="True" Foreground="#777777" FontStyle="Italic"/>
                             </TreeView>
                         </Grid>
@@ -580,6 +590,10 @@
                                 <RadioButton x:Name="TabRadioAnalysis" Content="🩺 Analizador de Código" GroupName="BottomPanelTabs"
                                              Style="{StaticResource BottomTabRadioStyle}" Click="BottomTabRadio_Click"/>
                                 <RadioButton x:Name="TabRadioImmediate" Content="⚡ Ventana Inmediata" GroupName="BottomPanelTabs"
+                                             Style="{StaticResource BottomTabRadioStyle}" Click="BottomTabRadio_Click"/>
+                                <RadioButton x:Name="TabRadioLocals" Content="🔍 Variables Locales" GroupName="BottomPanelTabs"
+                                             Style="{StaticResource BottomTabRadioStyle}" Click="BottomTabRadio_Click"/>
+                                <RadioButton x:Name="TabRadioCallStack" Content="🥞 Pila de Llamadas" GroupName="BottomPanelTabs"
                                              Style="{StaticResource BottomTabRadioStyle}" Click="BottomTabRadio_Click"/>
                             </StackPanel>
                         </DockPanel>
@@ -703,6 +717,47 @@
                         <!-- 5. Ventana Inmediata (Immediate Window) -->
                         <Grid x:Name="ViewImmediate" Visibility="Collapsed">
                             <exec:ImmediateWindowControl x:Name="MainImmediateWindowControl"/>
+                        </Grid>
+
+                        <!-- 6. Variables Locales (Locals Window) -->
+                        <Grid x:Name="ViewLocals" Visibility="Collapsed">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <Border Grid.Row="0" Background="#F7F7F7" BorderBrush="#E5E5E5" BorderThickness="0,0,0,1" Padding="6,2">
+                                <TextBlock x:Name="TxtLocalsStatus" Text="Variables en el �mbito actual de ejecuci�n" FontSize="11" Foreground="#444444" VerticalAlignment="Center"/>
+                            </Border>
+                            <ListView x:Name="LstLocals" Grid.Row="1" BorderThickness="0" FontFamily="Segoe UI" FontSize="11.5">
+                                <ListView.View>
+                                    <GridView>
+                                        <GridViewColumn Header="Nombre" Width="180" DisplayMemberBinding="{Binding Name}"/>
+                                        <GridViewColumn Header="Valor" Width="250" DisplayMemberBinding="{Binding Value}"/>
+                                        <GridViewColumn Header="Tipo" Width="120" DisplayMemberBinding="{Binding Type}"/>
+                                        <GridViewColumn Header="�mbito" Width="120" DisplayMemberBinding="{Binding Scope}"/>
+                                    </GridView>
+                                </ListView.View>
+                            </ListView>
+                        </Grid>
+
+                        <!-- 7. Pila de Llamadas (Call Stack Window) -->
+                        <Grid x:Name="ViewCallStack" Visibility="Collapsed">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <Border Grid.Row="0" Background="#F7F7F7" BorderBrush="#E5E5E5" BorderThickness="0,0,0,1" Padding="6,2">
+                                <TextBlock Text="Pila de llamadas de procedimientos activos (Doble clic para navegar)" FontSize="11" Foreground="#444444" VerticalAlignment="Center"/>
+                            </Border>
+                            <ListView x:Name="LstCallStack" Grid.Row="1" BorderThickness="0" FontFamily="Segoe UI" FontSize="11.5" MouseDoubleClick="LstCallStack_MouseDoubleClick">
+                                <ListView.View>
+                                    <GridView>
+                                        <GridViewColumn Header="Procedimiento" Width="220" DisplayMemberBinding="{Binding ProcedureName}"/>
+                                        <GridViewColumn Header="M�dulo / Formulario" Width="180" DisplayMemberBinding="{Binding ContainerName}"/>
+                                        <GridViewColumn Header="L�nea" Width="80" DisplayMemberBinding="{Binding LineNumber}"/>
+                                    </GridView>
+                                </ListView.View>
+                            </ListView>
                         </Grid>
                     </Grid>
                 </Grid>

@@ -1,0 +1,135 @@
+<Window x:Class="ViBa7.IDE.Dialogs.ReferencesWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Referencias"
+        Height="570" Width="760"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        Background="#F4F5F7"
+        ResizeMode="CanResizeWithGrip">
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="150"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- Cuadro de Búsqueda Rápida y Filtro -->
+        <Border Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,0,0,8" Background="White" BorderBrush="#D0D5DD" BorderThickness="1" CornerRadius="3" Padding="4,2">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="🔍" VerticalAlignment="Center" Margin="6,0,6,0" Foreground="#666666" FontSize="12"/>
+                <TextBox x:Name="TxtSearch" Grid.Column="1" BorderThickness="0" Background="Transparent" VerticalAlignment="Center"
+                         FontSize="12" TextChanged="TxtSearch_TextChanged" ToolTip="Escriba para filtrar por nombre, descripción, GUID o archivo"/>
+                <Button x:Name="BtnClearSearch" Grid.Column="2" Content="✕" Width="20" Height="20" Background="Transparent" BorderThickness="0"
+                        Foreground="#888888" Cursor="Hand" Click="BtnClearSearch_Click" ToolTip="Limpiar búsqueda"/>
+            </Grid>
+        </Border>
+
+        <!-- Título de sección -->
+        <TextBlock Grid.Row="1" Grid.Column="0" Text="Referencias disponibles:" FontWeight="SemiBold" FontSize="12" Foreground="#374151" Margin="2,0,0,6"/>
+
+        <!-- Contenido principal: Lista de Referencias con CheckBox -->
+        <Grid Grid.Row="2" Grid.Column="0">
+            <Border Background="#FFFFFF" BorderBrush="#D0D5DD" BorderThickness="1" CornerRadius="3">
+                <ListBox x:Name="LstReferences" BorderThickness="0" SelectionMode="Single"
+                         SelectionChanged="LstReferences_SelectionChanged"
+                         ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Auto">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="2,3">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <!-- CheckBox para vincular al proyecto activo -->
+                                <CheckBox Grid.Column="0" IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                          VerticalAlignment="Center" Margin="2,0,8,0"
+                                          ToolTip="Marcar para referenciar en el proyecto"/>
+                                <!-- Icono distintivo -->
+                                <TextBlock Grid.Column="1" Text="{Binding BadgeIcon}" FontSize="14"
+                                           VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                <!-- Textos: Título principal y detalle de archivo -->
+                                <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding DisplayTitle}" FontSize="12" FontWeight="SemiBold"
+                                               Foreground="{Binding TitleForeground}"/>
+                                    <TextBlock Text="{Binding Subtitle}" FontSize="10.5" Foreground="#6B7280" TextTrimming="CharacterEllipsis"/>
+                                </StackPanel>
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Border>
+
+            <!-- Overlay de carga en segundo plano -->
+            <Border x:Name="PnlLoading" Background="#CCFFFFFF" CornerRadius="3" Visibility="Collapsed">
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <ProgressBar IsIndeterminate="True" Width="140" Height="6" Margin="0,0,0,8"/>
+                    <TextBlock Text="Cargando bibliotecas de tipos del sistema..." FontSize="11.5" Foreground="#4B5563" HorizontalAlignment="Center"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- Botones Laterales -->
+        <StackPanel Grid.Row="2" Grid.Column="1" Margin="12,0,0,0">
+            <Button x:Name="BtnOk" Content="Aceptar" Height="28" Margin="0,0,0,6" IsDefault="True" FontWeight="SemiBold" Click="BtnOk_Click"/>
+            <Button x:Name="BtnCancel" Content="Cancelar" Height="26" Margin="0,0,0,10" IsCancel="True" Click="BtnCancel_Click"/>
+            
+            <Separator Margin="0,2,0,8" Background="#E5E7EB"/>
+            
+            <Button x:Name="BtnBrowse" Content="Examinar..." Height="28" Margin="0,0,0,10" Click="BtnBrowse_Click"
+                    ToolTip="Buscar una biblioteca de tipos (.olb, .tlb, .dll, .ocx, .exe) en disco"/>
+
+            <TextBlock Text="Prioridad:" FontSize="11" FontWeight="SemiBold" Foreground="#4B5563" Margin="0,2,0,4"/>
+            <Button x:Name="BtnPriorityUp" Content="Subir ▲" Height="26" Margin="0,0,0,4" Click="BtnPriorityUp_Click"
+                    ToolTip="Aumentar prioridad de evaluación de la referencia seleccionada" IsEnabled="False"/>
+            <Button x:Name="BtnPriorityDown" Content="Bajar ▼" Height="26" Margin="0,0,0,12" Click="BtnPriorityDown_Click"
+                    ToolTip="Disminuir prioridad de evaluación de la referencia seleccionada" IsEnabled="False"/>
+            
+            <Border Background="#F3F4F6" BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="3" Padding="6">
+                <StackPanel>
+                    <TextBlock x:Name="TxtStatusTotal" Text="Total: 0" FontSize="11" Foreground="#4B5563"/>
+                    <TextBlock x:Name="TxtStatusSelected" Text="Seleccionadas: 0" FontSize="11" FontWeight="Bold" Foreground="#1D4ED8" Margin="0,2,0,0"/>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+
+        <!-- Panel Inferior de Detalles de la Referencia Seleccionada -->
+        <Border Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,10,0,0" Padding="10" Background="#F9FAFB" BorderBrush="#D0D5DD" BorderThickness="1" CornerRadius="3">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="80"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="Ubicación:" FontWeight="Bold" FontSize="11" Foreground="#4B5563"/>
+                <TextBlock x:Name="TxtFilePath" Grid.Row="0" Grid.Column="1" Text="(Ninguna)" TextTrimming="CharacterEllipsis" FontSize="11" Foreground="#111827"/>
+
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="Idioma:" FontWeight="Bold" FontSize="11" Foreground="#4B5563" Margin="0,3,0,0"/>
+                <TextBlock x:Name="TxtLanguage" Grid.Row="1" Grid.Column="1" Text="-" FontSize="11" Foreground="#111827" Margin="0,3,0,0"/>
+
+                <TextBlock Grid.Row="2" Grid.Column="0" Text="GUID:" FontWeight="Bold" FontSize="11" Foreground="#4B5563" Margin="0,3,0,0"/>
+                <TextBlock x:Name="TxtGuid" Grid.Row="2" Grid.Column="1" Text="-" FontSize="11" Foreground="#4B5563" Margin="0,3,0,0"/>
+
+                <TextBlock Grid.Row="3" Grid.Column="0" Text="Versión:" FontWeight="Bold" FontSize="11" Foreground="#4B5563" Margin="0,3,0,0"/>
+                <TextBlock x:Name="TxtVersion" Grid.Row="3" Grid.Column="1" Text="-" FontSize="11" Foreground="#111827" Margin="0,3,0,0"/>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -321,12 +321,15 @@ public static class ControlToolboxRegistry
     /// <summary>
     /// Registra en la caja de herramientas todos los UserControls (.ctl) pertenecientes al proyecto actual.
     /// </summary>
-    public static void RegisterUserControlTools(VB6Project project)
+    public static void RegisterUserControlTools(VB6Project project, bool clearPrevious = true)
     {
         if (project == null) return;
 
-        // Limpiar controles de usuario previos
-        UnregisterUserControlTools();
+        // Limpiar controles de usuario previos si se solicita
+        if (clearPrevious)
+        {
+            UnregisterUserControlTools();
+        }
 
         string projName = !string.IsNullOrWhiteSpace(project.Name) ? project.Name : "Proyecto1";
 
@@ -361,6 +364,21 @@ public static class ControlToolboxRegistry
             );
 
             RegisterCustomTool(toolInfo);
+        }
+    }
+
+    /// <summary>
+    /// Registra en la caja de herramientas todos los UserControls (.ctl) pertenecientes a un grupo de proyectos (.vbg).
+    /// </summary>
+    public static void RegisterUserControlTools(VB6ProjectGroup projectGroup)
+    {
+        if (projectGroup == null) return;
+
+        UnregisterUserControlTools();
+
+        foreach (var p in projectGroup.Projects)
+        {
+            RegisterUserControlTools(p, clearPrevious: false);
         }
     }
 

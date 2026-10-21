@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -244,17 +244,17 @@ Startup=""frmMain""
 
         // 9. Modificar funcionalmente las propiedades vía ValueSetter (simulando interacción de usuario en el diseñador)
         modelChangedCalled = false;
-        propTheme.ValueSetter("2");
+        propTheme!.ValueSetter?.Invoke("2");
         Assert.True(modelChangedCalled);
         Assert.Equal("2", cardControl.GetCustomProperty("Theme"));
 
         modelChangedCalled = false;
-        propHeader.ValueSetter("\"Balance General 2026\"");
+        propHeader!.ValueSetter?.Invoke("\"Balance General 2026\"");
         Assert.True(modelChangedCalled);
         Assert.Equal("\"Balance General 2026\"", cardControl.GetCustomProperty("CardHeader"));
 
         modelChangedCalled = false;
-        propAccent.ValueSetter("&H0000FF00&");
+        propAccent!.ValueSetter?.Invoke("&H0000FF00&");
         Assert.True(modelChangedCalled);
         Assert.Equal("&H0000FF00&", cardControl.GetCustomProperty("AccentColor"));
 
@@ -344,7 +344,7 @@ Attribute VB_Name = ""frmGrid""
         Assert.NotNull(propWidth);
 
         modelChangedCalled = false;
-        propWidth.ValueSetter("9000");
+        propWidth!.ValueSetter?.Invoke("9000");
         Assert.True(modelChangedCalled);
         Assert.Equal(9000, gridControl.Width);
         // 9000 Twips * 2540 / 1440 = 15875 HiMetric
@@ -354,7 +354,7 @@ Attribute VB_Name = ""frmGrid""
         Assert.NotNull(propHeight);
 
         modelChangedCalled = false;
-        propHeight.ValueSetter("5000");
+        propHeight!.ValueSetter?.Invoke("5000");
         Assert.True(modelChangedCalled);
         Assert.Equal(5000, gridControl.Height);
         // 5000 Twips * 2540 / 1440 = 8819 HiMetric
@@ -362,7 +362,7 @@ Attribute VB_Name = ""frmGrid""
 
         // 5. Modificar propiedad Rows
         modelChangedCalled = false;
-        propRows.ValueSetter("100");
+        propRows!.ValueSetter?.Invoke("100");
         Assert.True(modelChangedCalled);
         Assert.Equal("100", gridControl.GetCustomProperty("Rows"));
 
@@ -459,13 +459,14 @@ Attribute VB_Name = ""frmGrid""
         Assert.Equal("ActiveX / TypeLib", propColor.Category);
 
         // 6. Probar edición
-        propValue.ValueSetter("75.5");
+        propValue!.ValueSetter?.Invoke("75.5");
         Assert.Equal("75.5", created.GetCustomProperty("Value"));
 
-        propColor.ValueSetter("&H00FF0000&");
+        propColor!.ValueSetter?.Invoke("&H00FF0000&");
         Assert.Equal("&H00FF0000&", created.GetCustomProperty("NeedleColor"));
 
         // Limpiar registro
         ControlToolboxRegistry.UnregisterOcxTools("MiControlLib");
+        VbControlMemberCatalog.UnregisterOcxLibrary("MiControlLib");
     }
 }

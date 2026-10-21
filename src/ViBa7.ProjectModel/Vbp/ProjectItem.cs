@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 
 namespace ViBa7.ProjectModel.Vbp;
@@ -15,6 +15,7 @@ public class ProjectItem
     public string? Guid { get; set; }
     public string? MajorVersion { get; set; }
     public string? MinorVersion { get; set; }
+    public VB6Project? ContainingProject { get; set; }
 
     public bool IsEditable => Type switch
     {

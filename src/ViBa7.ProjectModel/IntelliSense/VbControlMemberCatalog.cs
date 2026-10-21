@@ -14,6 +14,7 @@ namespace ViBa7.ProjectModel.IntelliSense;
 /// </summary>
 public static class VbControlMemberCatalog
 {
+    private static readonly object _syncLock = new();
     private static readonly Dictionary<string, List<VbSymbolItem>> _controlMembers = new(StringComparer.OrdinalIgnoreCase);
     private static readonly Dictionary<string, List<VbSymbolItem>> _dynamicControlMembers = new(StringComparer.OrdinalIgnoreCase);
     private static readonly List<OcxLibraryInfo> _registeredOcxLibraries = [];
@@ -62,51 +63,66 @@ public static class VbControlMemberCatalog
             return list;
         }
 
-        // Buscar en controles dinámicos registrados (OCX)
-        if (_dynamicControlMembers.TryGetValue(normalized, out var dynList))
+        lock (_syncLock)
         {
-            return dynList;
-        }
+            // Buscar en controles dinámicos registrados (OCX)
+            if (_dynamicControlMembers.TryGetValue(normalized, out var dynList))
+            {
+                return dynList;
+            }
 
-        // Si viene calificado ej. "AxJControls.axJColCombo", buscar por la parte no calificada
-        int dot = normalized.LastIndexOf('.');
-        if (dot >= 0 && dot < normalized.Length - 1)
-        {
-            string shortName = normalized[(dot + 1)..];
-            if (_controlMembers.TryGetValue(shortName, out var shortList))
-            {
-                return shortList;
-            }
-            if (_dynamicControlMembers.TryGetValue(shortName, out var shortDynList))
-            {
-                return shortDynList;
-            }
-        }
-
-        // Intentar auto-descubrir y registrar la TypeLib desde el Registro de Windows si aún no estaba cargada
-        if (TryEnsureControlRegisteredFromRegistry(normalized))
-        {
-            if (_dynamicControlMembers.TryGetValue(normalized, out var resolvedDynList))
-            {
-                return resolvedDynList;
-            }
+            // Si viene calificado ej. "AxJControls.axJColCombo", buscar por la parte no calificada
+            int dot = normalized.LastIndexOf('.');
             if (dot >= 0 && dot < normalized.Length - 1)
             {
                 string shortName = normalized[(dot + 1)..];
-                if (_dynamicControlMembers.TryGetValue(shortName, out var resolvedShortList))
+                if (_controlMembers.TryGetValue(shortName, out var shortList))
                 {
-                    return resolvedShortList;
+                    return shortList;
+                }
+                if (_dynamicControlMembers.TryGetValue(shortName, out var shortDynList))
+                {
+                    return shortDynList;
                 }
             }
-        }
 
-        return Array.Empty<VbSymbolItem>();
+            // Intentar auto-descubrir y registrar la TypeLib desde el Registro de Windows si aún no estaba cargada
+            if (TryEnsureControlRegisteredFromRegistry(normalized))
+            {
+                if (_dynamicControlMembers.TryGetValue(normalized, out var resolvedDynList))
+                {
+                    return resolvedDynList;
+                }
+                if (dot >= 0 && dot < normalized.Length - 1)
+                {
+                    string shortName = normalized[(dot + 1)..];
+                    if (_dynamicControlMembers.TryGetValue(shortName, out var resolvedShortList))
+                    {
+                        return resolvedShortList;
+                    }
+                }
+            }
+
+            return Array.Empty<VbSymbolItem>();
+        }
     }
 
     /// <summary>
     /// Retorna los miembros del Formulario (Form / Me).
     /// </summary>
     public static IReadOnlyList<VbSymbolItem> GetFormMembers() => _formMembers;
+
+    /// <summary>
+    /// Retorna todos los nombres de tipos de controles intrínsecos de VB6.
+    /// </summary>
+    public static IEnumerable<string> GetKnownControlTypes()
+    {
+        yield return "Form";
+        foreach (var key in _controlMembers.Keys)
+        {
+            yield return key;
+        }
+    }
 
     /// <summary>
     /// Busca si un tipo corresponde a una enumeración registrada en alguna TypeLib de OCX y retorna sus opciones para el PropertyGrid.
@@ -117,12 +133,15 @@ public static class VbControlMemberCatalog
         string clean = enumTypeName.Trim();
         if (clean.StartsWith("OLE_", StringComparison.OrdinalIgnoreCase)) return null;
 
-        foreach (var lib in _registeredOcxLibraries)
+        lock (_syncLock)
         {
-            var found = lib.Enums.FirstOrDefault(e => e.Name.Equals(clean, StringComparison.OrdinalIgnoreCase));
-            if (found != null && found.Items.Count > 0)
+            foreach (var lib in _registeredOcxLibraries)
             {
-                return found.Items.Select(i => new DesignerPropertyChoice($"{i.Value} - {i.Name}", i.Value.ToString())).ToList();
+                var found = lib.Enums.FirstOrDefault(e => e.Name.Equals(clean, StringComparison.OrdinalIgnoreCase));
+                if (found != null && found.Items.Count > 0)
+                {
+                    return found.Items.Select(i => new DesignerPropertyChoice($"{i.Value} - {i.Name}", i.Value.ToString())).ToList();
+                }
             }
         }
         return null;
@@ -135,32 +154,41 @@ public static class VbControlMemberCatalog
     {
         ArgumentNullException.ThrowIfNull(lib);
 
-        // Si ya estaba registrada, desregistrar primero para refrescar
-        UnregisterOcxLibrary(lib.LibraryName);
+        lock (_syncLock)
+        {
+            // Si ya estaba registrada, desregistrar primero para refrescar
+            UnregisterOcxLibrary(lib.LibraryName);
 
-        _registeredOcxLibraries.Add(lib);
-        string? fileStem = !string.IsNullOrWhiteSpace(lib.FilePath)
-            ? Path.GetFileNameWithoutExtension(lib.FilePath)
-            : null;
+            _registeredOcxLibraries.Add(lib);
+            string? fileStem = !string.IsNullOrWhiteSpace(lib.FilePath)
+                ? Path.GetFileNameWithoutExtension(lib.FilePath)
+                : null;
 
         foreach (var ctrl in lib.Controls)
         {
             var symbols = new List<VbSymbolItem>();
 
-            // Propiedades y métodos del control
+            // Propiedades y métodos del control (omitir miembros marcados con FUNCFLAG_FHIDDEN / VARFLAG_FHIDDEN)
             foreach (var m in ctrl.Members)
             {
+                if (m.IsHidden) continue;
+
                 symbols.Add(new VbSymbolItem
                 {
                     Name = m.Name,
                     Kind = m.Kind,
                     ReturnType = m.ReturnType,
+                    DispId = m.DispId,
+                    IsHidden = m.IsHidden,
+                    IsBrowsable = m.IsBrowsable,
+                    IsReadOnly = m.Kind == VbSymbolKind.Property && m.IsPropertyGet && !m.IsPropertyPut,
                     Description = !string.IsNullOrEmpty(m.Description) ? m.Description : $"{m.Kind} {m.Name} de {ctrl.Name}",
                     Parameters = m.Parameters.Select(p => new VbParameterInfo
                     {
                         Name = p.Name,
                         Type = p.Type,
                         IsOptional = p.IsOptional,
+                        IsByRef = p.IsByRef,
                         DefaultValue = p.DefaultValue,
                         Description = p.Description ?? string.Empty
                     }).ToList()
@@ -175,12 +203,14 @@ public static class VbControlMemberCatalog
                     Name = ev.Name,
                     Kind = VbSymbolKind.Event,
                     ReturnType = "Void",
+                    DispId = ev.DispId,
                     Description = !string.IsNullOrEmpty(ev.Description) ? ev.Description : $"Evento {ev.Name} de {ctrl.Name}",
                     Parameters = ev.Parameters.Select(p => new VbParameterInfo
                     {
                         Name = p.Name,
                         Type = p.Type,
                         IsOptional = p.IsOptional,
+                        IsByRef = p.IsByRef,
                         DefaultValue = p.DefaultValue,
                         Description = p.Description ?? string.Empty
                     }).ToList()
@@ -203,6 +233,238 @@ public static class VbControlMemberCatalog
             }
         }
     }
+}
+
+    /// <summary>
+    /// Resuelve el nombre de una propiedad de un control ActiveX a partir de su DISPID.
+    /// </summary>
+    public static bool TryResolvePropertyNameByDispId(string controlTypeName, int dispId, out string propertyName)
+    {
+        propertyName = string.Empty;
+        var members = GetMembersForControl(controlTypeName);
+        var match = members.FirstOrDefault(m => m.Kind == VbSymbolKind.Property && m.DispId == dispId);
+        if (match != null)
+        {
+            propertyName = match.Name;
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Resuelve el símbolo de evento de un control ActiveX a partir de su DISPID.
+    /// </summary>
+    public static bool TryResolveEventByDispId(string controlTypeName, int dispId, out VbSymbolItem? eventSymbol)
+    {
+        eventSymbol = null;
+        var members = GetMembersForControl(controlTypeName);
+        var match = members.FirstOrDefault(m => m.Kind == VbSymbolKind.Event && m.DispId == dispId);
+        if (match != null)
+        {
+            eventSymbol = match;
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Retorna todos los eventos expuestos por la interfaz Source de un control (intrínseco o ActiveX).
+    /// </summary>
+    public static IReadOnlyList<VbSymbolItem> GetEventsForControl(string controlTypeName)
+    {
+        var members = GetMembersForControl(controlTypeName);
+        return members.Where(m => m.Kind == VbSymbolKind.Event).ToList();
+    }
+
+    /// <summary>
+    /// Obtiene el evento predeterminado de un control (tanto intrínseco como ActiveX) y su lista de parámetros para generación de código.
+    /// </summary>
+    public static bool TryGetDefaultEvent(string controlTypeName, out string eventName, out IReadOnlyList<VbParameterInfo> parameters)
+    {
+        eventName = "Click";
+        parameters = Array.Empty<VbParameterInfo>();
+
+        if (string.IsNullOrWhiteSpace(controlTypeName)) return false;
+        string norm = NormalizeTypeName(controlTypeName);
+
+        // Mapeo curado para controles estándar y OCX populares de VB6
+        if (norm.EndsWith("CommandButton", StringComparison.OrdinalIgnoreCase) ||
+            norm.EndsWith("OptionButton", StringComparison.OrdinalIgnoreCase) ||
+            norm.EndsWith("CheckBox", StringComparison.OrdinalIgnoreCase) ||
+            norm.EndsWith("Menu", StringComparison.OrdinalIgnoreCase) ||
+            norm.EndsWith("PictureBox", StringComparison.OrdinalIgnoreCase) ||
+            norm.EndsWith("Image", StringComparison.OrdinalIgnoreCase))
+        {
+            eventName = "Click";
+            parameters = Array.Empty<VbParameterInfo>();
+            return true;
+        }
+
+        if (norm.EndsWith("TextBox", StringComparison.OrdinalIgnoreCase))
+        {
+            eventName = "Change";
+            parameters = Array.Empty<VbParameterInfo>();
+            return true;
+        }
+
+        if (norm.EndsWith("ListBox", StringComparison.OrdinalIgnoreCase) ||
+            norm.EndsWith("ComboBox", StringComparison.OrdinalIgnoreCase))
+        {
+            eventName = "Click";
+            parameters = Array.Empty<VbParameterInfo>();
+            return true;
+        }
+
+        if (norm.EndsWith("Timer", StringComparison.OrdinalIgnoreCase))
+        {
+            eventName = "Timer";
+            parameters = Array.Empty<VbParameterInfo>();
+            return true;
+        }
+
+        if (norm.EndsWith("Form", StringComparison.OrdinalIgnoreCase))
+        {
+            eventName = "Load";
+            parameters = Array.Empty<VbParameterInfo>();
+            return true;
+        }
+
+        if (norm.EndsWith("MSFlexGrid", StringComparison.OrdinalIgnoreCase) ||
+            norm.EndsWith("MSHFlexGrid", StringComparison.OrdinalIgnoreCase))
+        {
+            eventName = "RowColChange";
+            parameters = Array.Empty<VbParameterInfo>();
+            return true;
+        }
+
+        if (norm.EndsWith("TreeCtrl", StringComparison.OrdinalIgnoreCase) ||
+            norm.EndsWith("TreeView", StringComparison.OrdinalIgnoreCase))
+        {
+            eventName = "NodeClick";
+            parameters = new List<VbParameterInfo>
+            {
+                new() { Name = "Node", Type = "Node", IsByRef = false }
+            };
+            return true;
+        }
+
+        if (norm.EndsWith("ListViewCtrl", StringComparison.OrdinalIgnoreCase) ||
+            norm.EndsWith("ListView", StringComparison.OrdinalIgnoreCase))
+        {
+            eventName = "ItemClick";
+            parameters = new List<VbParameterInfo>
+            {
+                new() { Name = "Item", Type = "ListItem", IsByRef = false }
+            };
+            return true;
+        }
+
+        if (norm.EndsWith("SSTab", StringComparison.OrdinalIgnoreCase))
+        {
+            eventName = "Click";
+            parameters = new List<VbParameterInfo>
+            {
+                new() { Name = "PreviousTab", Type = "Integer", IsByRef = true }
+            };
+            return true;
+        }
+
+        if (norm.EndsWith("Toolbar", StringComparison.OrdinalIgnoreCase))
+        {
+            eventName = "ButtonClick";
+            parameters = new List<VbParameterInfo>
+            {
+                new() { Name = "Button", Type = "Button", IsByRef = false }
+            };
+            return true;
+        }
+
+        if (norm.EndsWith("StatusBar", StringComparison.OrdinalIgnoreCase))
+        {
+            eventName = "PanelClick";
+            parameters = new List<VbParameterInfo>
+            {
+                new() { Name = "Panel", Type = "Panel", IsByRef = false }
+            };
+            return true;
+        }
+
+        if (norm.EndsWith("TabStrip", StringComparison.OrdinalIgnoreCase))
+        {
+            eventName = "TabClick";
+            parameters = new List<VbParameterInfo>
+            {
+                new() { Name = "Tab", Type = "Tab", IsByRef = false }
+            };
+            return true;
+        }
+
+        if (norm.EndsWith("Slider", StringComparison.OrdinalIgnoreCase) ||
+            norm.EndsWith("UpDown", StringComparison.OrdinalIgnoreCase) ||
+            norm.EndsWith("DTPicker", StringComparison.OrdinalIgnoreCase) ||
+            norm.EndsWith("FlatScrollBar", StringComparison.OrdinalIgnoreCase))
+        {
+            eventName = "Change";
+            parameters = Array.Empty<VbParameterInfo>();
+            return true;
+        }
+
+        if (norm.EndsWith("RichTextBox", StringComparison.OrdinalIgnoreCase))
+        {
+            eventName = "Change";
+            parameters = Array.Empty<VbParameterInfo>();
+            return true;
+        }
+
+        if (norm.EndsWith("Winsock", StringComparison.OrdinalIgnoreCase))
+        {
+            eventName = "DataArrival";
+            parameters = new List<VbParameterInfo>
+            {
+                new() { Name = "bytesTotal", Type = "Long", IsByRef = false }
+            };
+            return true;
+        }
+
+        if (norm.EndsWith("MSComm", StringComparison.OrdinalIgnoreCase))
+        {
+            eventName = "OnComm";
+            parameters = Array.Empty<VbParameterInfo>();
+            return true;
+        }
+
+        // Búsqueda dinámica en TypeLib
+        var events = GetEventsForControl(controlTypeName);
+        if (events.Count > 0)
+        {
+            // 1. Evento con DISPID 0 (DISPID_VALUE)
+            var defDispId = events.FirstOrDefault(e => e.DispId == 0);
+            if (defDispId != null)
+            {
+                eventName = defDispId.Name;
+                parameters = defDispId.Parameters;
+                return true;
+            }
+
+            // 2. Evento Click o Change
+            var clickOrChange = events.FirstOrDefault(e => e.Name.Equals("Click", StringComparison.OrdinalIgnoreCase) ||
+                                                           e.Name.Equals("Change", StringComparison.OrdinalIgnoreCase));
+            if (clickOrChange != null)
+            {
+                eventName = clickOrChange.Name;
+                parameters = clickOrChange.Parameters;
+                return true;
+            }
+
+            // 3. Primer evento de la interfaz Source
+            var firstEvent = events[0];
+            eventName = firstEvent.Name;
+            parameters = firstEvent.Parameters;
+            return true;
+        }
+
+        return false;
+    }
 
     /// <summary>
     /// Elimina el registro de una biblioteca OCX previamente cargada.
@@ -211,38 +473,112 @@ public static class VbControlMemberCatalog
     {
         if (string.IsNullOrWhiteSpace(libraryNameOrPath)) return;
 
-        var matching = _registeredOcxLibraries.Where(l =>
-            string.Equals(l.LibraryName, libraryNameOrPath, StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(l.FilePath, libraryNameOrPath, StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(l.Guid, libraryNameOrPath, StringComparison.OrdinalIgnoreCase)
-        ).ToList();
-
-        foreach (var lib in matching)
+        lock (_syncLock)
         {
-            _registeredOcxLibraries.Remove(lib);
-            string? fileStem = !string.IsNullOrWhiteSpace(lib.FilePath)
-                ? Path.GetFileNameWithoutExtension(lib.FilePath)
-                : null;
+            var matching = _registeredOcxLibraries.Where(l =>
+                string.Equals(l.LibraryName, libraryNameOrPath, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(l.FilePath, libraryNameOrPath, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(l.Guid, libraryNameOrPath, StringComparison.OrdinalIgnoreCase)
+            ).ToList();
 
-            foreach (var ctrl in lib.Controls)
+            foreach (var lib in matching)
             {
-                _dynamicControlMembers.Remove(ctrl.Name);
-                if (!string.IsNullOrEmpty(lib.LibraryName))
+                _registeredOcxLibraries.Remove(lib);
+                string? fileStem = !string.IsNullOrWhiteSpace(lib.FilePath)
+                    ? Path.GetFileNameWithoutExtension(lib.FilePath)
+                    : null;
+
+                foreach (var ctrl in lib.Controls)
                 {
-                    _dynamicControlMembers.Remove($"{lib.LibraryName}.{ctrl.Name}");
-                }
-                if (!string.IsNullOrEmpty(fileStem))
-                {
-                    _dynamicControlMembers.Remove($"{fileStem}.{ctrl.Name}");
+                    _dynamicControlMembers.Remove(ctrl.Name);
+                    if (!string.IsNullOrEmpty(lib.LibraryName))
+                    {
+                        _dynamicControlMembers.Remove($"{lib.LibraryName}.{ctrl.Name}");
+                    }
+                    if (!string.IsNullOrEmpty(fileStem))
+                    {
+                        _dynamicControlMembers.Remove($"{fileStem}.{ctrl.Name}");
+                    }
                 }
             }
         }
     }
 
     /// <summary>
+    /// Obtiene la declaración canónica de cabecera .frm (Object = "{GUID}#Major.Minor#0"; "Archivo.ocx")
+    /// correspondiente a un tipo de control ActiveX registrado.
+    /// </summary>
+    public static bool TryGetOcxObjectHeaderForControl(string controlTypeName, out string objectHeaderLine)
+    {
+        objectHeaderLine = string.Empty;
+        if (string.IsNullOrWhiteSpace(controlTypeName) || controlTypeName.StartsWith("VB.", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        string normalized = NormalizeTypeName(controlTypeName);
+        int dot = normalized.LastIndexOf('.');
+        string? prefix = dot > 0 ? normalized[..dot] : null;
+        string shortName = dot >= 0 && dot < normalized.Length - 1 ? normalized[(dot + 1)..] : normalized;
+
+        lock (_syncLock)
+        {
+            OcxLibraryInfo? matchedLib = FindLibraryForControl(prefix, shortName);
+            if (matchedLib == null && TryEnsureControlRegisteredFromRegistry(normalized))
+            {
+                matchedLib = FindLibraryForControl(prefix, shortName);
+            }
+
+            if (matchedLib == null || string.IsNullOrWhiteSpace(matchedLib.Guid) || string.IsNullOrWhiteSpace(matchedLib.FilePath))
+            {
+                return false;
+            }
+
+            string guidStr = matchedLib.Guid.Trim();
+            if (!guidStr.StartsWith('{')) guidStr = "{" + guidStr;
+            if (!guidStr.EndsWith('}')) guidStr += "}";
+
+            int major = matchedLib.MajorVersion <= 0 && matchedLib.MinorVersion <= 0 ? 1 : matchedLib.MajorVersion;
+            int minor = Math.Max(0, matchedLib.MinorVersion);
+            string fileName = Path.GetFileName(matchedLib.FilePath);
+
+            objectHeaderLine = $"Object = \"{guidStr}#{major}.{minor}#0\"; \"{fileName}\"";
+            return true;
+        }
+    }
+
+    private static OcxLibraryInfo? FindLibraryForControl(string? prefix, string shortName)
+    {
+        foreach (var lib in _registeredOcxLibraries)
+        {
+            string? fileStem = !string.IsNullOrWhiteSpace(lib.FilePath)
+                ? Path.GetFileNameWithoutExtension(lib.FilePath)
+                : null;
+
+            bool prefixMatches = string.IsNullOrWhiteSpace(prefix) ||
+                                 string.Equals(lib.LibraryName, prefix, StringComparison.OrdinalIgnoreCase) ||
+                                 string.Equals(fileStem, prefix, StringComparison.OrdinalIgnoreCase);
+
+            if (!prefixMatches) continue;
+
+            if (lib.Controls.Any(c => string.Equals(c.Name, shortName, StringComparison.OrdinalIgnoreCase)))
+            {
+                return lib;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
     /// Retorna la lista de bibliotecas OCX registradas dinámicamente.
     /// </summary>
-    public static IReadOnlyList<OcxLibraryInfo> GetRegisteredOcxLibraries() => _registeredOcxLibraries;
+    public static IReadOnlyList<OcxLibraryInfo> GetRegisteredOcxLibraries()
+    {
+        lock (_syncLock)
+        {
+            return _registeredOcxLibraries.ToList();
+        }
+    }
 
     /// <summary>
     /// Intenta resolver el CLSID de un control OCX registrado dinámicamente por su nombre simple o calificado.
@@ -252,17 +588,20 @@ public static class VbControlMemberCatalog
         clsid = string.Empty;
         if (string.IsNullOrWhiteSpace(typeName)) return false;
 
-        if (TryResolveOcxClsidInternal(typeName, out clsid))
+        lock (_syncLock)
         {
-            return true;
-        }
+            if (TryResolveOcxClsidInternal(typeName, out clsid))
+            {
+                return true;
+            }
 
-        if (TryEnsureControlRegisteredFromRegistry(typeName))
-        {
-            return TryResolveOcxClsidInternal(typeName, out clsid);
-        }
+            if (TryEnsureControlRegisteredFromRegistry(typeName))
+            {
+                return TryResolveOcxClsidInternal(typeName, out clsid);
+            }
 
-        return false;
+            return false;
+        }
     }
 
     private static bool TryResolveOcxClsidInternal(string typeName, out string clsid)
@@ -326,85 +665,88 @@ public static class VbControlMemberCatalog
         if (string.IsNullOrWhiteSpace(clean) || _controlMembers.ContainsKey(clean))
             return false;
 
-        if (!_attemptedRegistryLookups.Add(clean))
+        lock (_syncLock)
+        {
+            if (!_attemptedRegistryLookups.Add(clean))
+                return _dynamicControlMembers.ContainsKey(clean);
+
+            try
+            {
+                string? resolvedClsid = null;
+                string[] candidates =
+                [
+                    clean,
+                    $"{clean}.1",
+                    $"{clean}.2",
+                    $"{clean}.3",
+                    $"{clean}.4"
+                ];
+
+                foreach (var progId in candidates)
+                {
+                    using var clsidKey = Registry.ClassesRoot.OpenSubKey($@"{progId}\CLSID");
+                    if (clsidKey?.GetValue(null) is string val && !string.IsNullOrWhiteSpace(val))
+                    {
+                        resolvedClsid = val.Trim();
+                        break;
+                    }
+                }
+
+                if (string.IsNullOrWhiteSpace(resolvedClsid))
+                    return false;
+
+                if (!resolvedClsid.StartsWith('{'))
+                    resolvedClsid = "{" + resolvedClsid + "}";
+
+                using var inprocKey = Registry.ClassesRoot.OpenSubKey($@"CLSID\{resolvedClsid}\InprocServer32");
+                string? serverPath = inprocKey?.GetValue(null) as string;
+                if (!string.IsNullOrWhiteSpace(serverPath))
+                {
+                    serverPath = Environment.ExpandEnvironmentVariables(serverPath.Trim('\"'));
+                }
+
+                if (string.IsNullOrWhiteSpace(serverPath) || !File.Exists(serverPath))
+                {
+                    using var tlibKey = Registry.ClassesRoot.OpenSubKey($@"CLSID\{resolvedClsid}\TypeLib");
+                    string? tlibGuid = tlibKey?.GetValue(null) as string;
+                    if (!string.IsNullOrWhiteSpace(tlibGuid))
+                    {
+                        serverPath = OcxTypeLibReader.ResolveOcxPath(clean, null, tlibGuid);
+                    }
+                }
+
+                if (!string.IsNullOrWhiteSpace(serverPath) && File.Exists(serverPath))
+                {
+                    if (!_registeredOcxLibraries.Any(l => string.Equals(l.FilePath, serverPath, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        if (OcxTypeLibReader.TryReadTypeLib(serverPath, out var libInfo, out _) && libInfo != null)
+                        {
+                            RegisterOcxLibrary(libInfo);
+                        }
+                    }
+
+                    // Si el ProgID usado tenía un prefijo distinto al LibraryName de la TypeLib, enlazar el alias directamente
+                    var matchingLib = _registeredOcxLibraries.FirstOrDefault(l =>
+                        string.Equals(l.FilePath, serverPath, StringComparison.OrdinalIgnoreCase));
+                    if (matchingLib != null)
+                    {
+                        var matchingCtrl = matchingLib.Controls.FirstOrDefault(c =>
+                            string.Equals(c.Clsid, resolvedClsid, StringComparison.OrdinalIgnoreCase));
+                        if (matchingCtrl != null && _dynamicControlMembers.TryGetValue(matchingCtrl.Name, out var syms))
+                        {
+                            _dynamicControlMembers[clean] = syms;
+                            return true;
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // Ignorar errores de acceso al Registro
+            }
+
             return _dynamicControlMembers.ContainsKey(clean);
-
-        try
-        {
-            string? resolvedClsid = null;
-            string[] candidates =
-            [
-                clean,
-                $"{clean}.1",
-                $"{clean}.2",
-                $"{clean}.3",
-                $"{clean}.4"
-            ];
-
-            foreach (var progId in candidates)
-            {
-                using var clsidKey = Registry.ClassesRoot.OpenSubKey($@"{progId}\CLSID");
-                if (clsidKey?.GetValue(null) is string val && !string.IsNullOrWhiteSpace(val))
-                {
-                    resolvedClsid = val.Trim();
-                    break;
-                }
-            }
-
-            if (string.IsNullOrWhiteSpace(resolvedClsid))
-                return false;
-
-            if (!resolvedClsid.StartsWith('{'))
-                resolvedClsid = "{" + resolvedClsid + "}";
-
-            using var inprocKey = Registry.ClassesRoot.OpenSubKey($@"CLSID\{resolvedClsid}\InprocServer32");
-            string? serverPath = inprocKey?.GetValue(null) as string;
-            if (!string.IsNullOrWhiteSpace(serverPath))
-            {
-                serverPath = Environment.ExpandEnvironmentVariables(serverPath.Trim('\"'));
-            }
-
-            if (string.IsNullOrWhiteSpace(serverPath) || !File.Exists(serverPath))
-            {
-                using var tlibKey = Registry.ClassesRoot.OpenSubKey($@"CLSID\{resolvedClsid}\TypeLib");
-                string? tlibGuid = tlibKey?.GetValue(null) as string;
-                if (!string.IsNullOrWhiteSpace(tlibGuid))
-                {
-                    serverPath = OcxTypeLibReader.ResolveOcxPath(clean, null, tlibGuid);
-                }
-            }
-
-            if (!string.IsNullOrWhiteSpace(serverPath) && File.Exists(serverPath))
-            {
-                if (!_registeredOcxLibraries.Any(l => string.Equals(l.FilePath, serverPath, StringComparison.OrdinalIgnoreCase)))
-                {
-                    if (OcxTypeLibReader.TryReadTypeLib(serverPath, out var libInfo, out _) && libInfo != null)
-                    {
-                        RegisterOcxLibrary(libInfo);
-                    }
-                }
-
-                // Si el ProgID usado tenía un prefijo distinto al LibraryName de la TypeLib, enlazar el alias directamente
-                var matchingLib = _registeredOcxLibraries.FirstOrDefault(l =>
-                    string.Equals(l.FilePath, serverPath, StringComparison.OrdinalIgnoreCase));
-                if (matchingLib != null)
-                {
-                    var matchingCtrl = matchingLib.Controls.FirstOrDefault(c =>
-                        string.Equals(c.Clsid, resolvedClsid, StringComparison.OrdinalIgnoreCase));
-                    if (matchingCtrl != null && _dynamicControlMembers.TryGetValue(matchingCtrl.Name, out var syms))
-                    {
-                        _dynamicControlMembers[clean] = syms;
-                        return true;
-                    }
-                }
-            }
         }
-        catch
-        {
-            // Ignorar errores de acceso al Registro
-        }
-
-        return _dynamicControlMembers.ContainsKey(clean);
     }
 
     /// <summary>
@@ -412,9 +754,12 @@ public static class VbControlMemberCatalog
     /// </summary>
     public static void ClearDynamicRegistrations()
     {
-        _dynamicControlMembers.Clear();
-        _registeredOcxLibraries.Clear();
-        _attemptedRegistryLookups.Clear();
+        lock (_syncLock)
+        {
+            _dynamicControlMembers.Clear();
+            _registeredOcxLibraries.Clear();
+            _attemptedRegistryLookups.Clear();
+        }
     }
 
     /// <summary>
@@ -423,20 +768,28 @@ public static class VbControlMemberCatalog
     public static bool IsControlRegistered(string typeName)
     {
         string norm = NormalizeTypeName(typeName);
-        if (_controlMembers.ContainsKey(norm) || _dynamicControlMembers.ContainsKey(norm))
+        if (_controlMembers.ContainsKey(norm))
         {
             return true;
         }
-        int dot = norm.LastIndexOf('.');
-        if (dot >= 0 && dot < norm.Length - 1)
+
+        lock (_syncLock)
         {
-            string shortName = norm[(dot + 1)..];
-            if (_controlMembers.ContainsKey(shortName) || _dynamicControlMembers.ContainsKey(shortName))
+            if (_dynamicControlMembers.ContainsKey(norm))
             {
                 return true;
             }
+            int dot = norm.LastIndexOf('.');
+            if (dot >= 0 && dot < norm.Length - 1)
+            {
+                string shortName = norm[(dot + 1)..];
+                if (_controlMembers.ContainsKey(shortName) || _dynamicControlMembers.ContainsKey(shortName))
+                {
+                    return true;
+                }
+            }
+            return TryEnsureControlRegisteredFromRegistry(norm);
         }
-        return TryEnsureControlRegisteredFromRegistry(norm);
     }
 
     /// <summary>

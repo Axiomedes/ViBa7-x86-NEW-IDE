@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
@@ -16,12 +16,26 @@ public partial class ToolboxPanel : UserControl, INotifyPropertyChanged
     public class ToolboxItemViewModel : INotifyPropertyChanged
     {
         private bool _isSelected;
+        private bool _isEnabled = true;
 
         public string TypeName { get; init; } = string.Empty;
         public string DisplayName { get; init; } = string.Empty;
         public string Glyph { get; init; } = string.Empty;
         public ImageSource? IconSource { get; init; }
         public string ToolTip { get; init; } = string.Empty;
+
+        public bool IsEnabled
+        {
+            get => _isEnabled;
+            set
+            {
+                if (_isEnabled != value)
+                {
+                    _isEnabled = value;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsEnabled)));
+                }
+            }
+        }
 
         public bool IsSelected
         {
@@ -131,6 +145,29 @@ public partial class ToolboxPanel : UserControl, INotifyPropertyChanged
         };
 
         return Application.Current?.TryFindResource(resourceKey) as ImageSource;
+    }
+
+    public void SetToolEnabled(string typeName, bool isEnabled)
+    {
+        var tool = Tools.FirstOrDefault(t => t.TypeName.Equals(typeName, StringComparison.OrdinalIgnoreCase) ||
+                                             t.DisplayName.Equals(typeName, StringComparison.OrdinalIgnoreCase) ||
+                                             t.TypeName.EndsWith($".{typeName}", StringComparison.OrdinalIgnoreCase));
+        if (tool != null)
+        {
+            tool.IsEnabled = isEnabled;
+            if (!isEnabled && tool.IsSelected)
+            {
+                ResetToPointer();
+            }
+        }
+    }
+
+    public void EnableAllTools()
+    {
+        foreach (var item in Tools)
+        {
+            item.IsEnabled = true;
+        }
     }
 
     public void ResetToPointer()

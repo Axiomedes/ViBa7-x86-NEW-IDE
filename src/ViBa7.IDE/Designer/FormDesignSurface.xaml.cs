@@ -156,6 +156,24 @@ public partial class FormDesignSurface : UserControl
     }
 
     /// <summary>
+    /// Sincroniza el estado de persistencia de todos los controles ActiveX alojados hacia el modelo de diseño.
+    /// </summary>
+    public void SyncAllActiveXHostsToModel()
+    {
+        foreach (var kv in _visualMap)
+        {
+            if (kv.Value is ActiveXInPlaceHost axHost)
+            {
+                axHost.SyncToDesignerModel();
+            }
+            else if (kv.Value is Grid g && g.Children.Count > 0 && g.Children[0] is ActiveXInPlaceHost gridHost)
+            {
+                gridHost.SyncToDesignerModel();
+            }
+        }
+    }
+
+    /// <summary>
     /// Regenera todos los elementos visuales de los controles en el lienzo.
     /// </summary>
     public void RefreshCanvas()
@@ -163,28 +181,65 @@ public partial class FormDesignSurface : UserControl
         // Guardar elementos especiales (Marquee y SelectionFrame)
         var specialElements = new List<UIElement> { MarqueeRectangle, SelectionFrame };
 
-        // Liberar instancias previas de contenedores ActiveX
-        foreach (var kv in _visualMap)
+        if (CurrentModel == null)
         {
-            if (kv.Value is IDisposable disposable)
+            foreach (var kv in _visualMap)
             {
-                disposable.Dispose();
+                if (kv.Value is IDisposable disposable) disposable.Dispose();
+            }
+            var toRemoveAll = GridCanvas.Children.Cast<UIElement>().Where(el => !specialElements.Contains(el)).ToList();
+            foreach (var el in toRemoveAll) GridCanvas.Children.Remove(el);
+            _visualMap.Clear();
+            UpdateSelectionFrame();
+            return;
+        }
+
+        var currentControls = CurrentModel.NonMenuControls.ToHashSet();
+
+        // 1. Liberar y remover controles que ya no existen en el modelo
+        var removedControls = _visualMap.Keys.Where(c => !currentControls.Contains(c)).ToList();
+        foreach (var rem in removedControls)
+        {
+            if (_visualMap.TryGetValue(rem, out var remVisual))
+            {
+                if (remVisual is IDisposable disposable) disposable.Dispose();
+                GridCanvas.Children.Remove(remVisual);
+                _visualMap.Remove(rem);
             }
         }
 
-        // Remover solo los controles
-        var toRemove = GridCanvas.Children.Cast<UIElement>().Where(el => !specialElements.Contains(el)).ToList();
-        foreach (var el in toRemove)
-        {
-            GridCanvas.Children.Remove(el);
-        }
-
-        _visualMap.Clear();
-
-        if (CurrentModel == null) return;
-
+        // 2. Para cada control del modelo: si ya tiene un ActiveXInPlaceHost existente, reutilizarlo y actualizarlo.
+        // Si no existe o es un control visual de WPF, crearlo/refrescarlo.
         foreach (var control in CurrentModel.NonMenuControls)
         {
+            if (_visualMap.TryGetValue(control, out var existingVisual))
+            {
+                ActiveXInPlaceHost? axHost = existingVisual as ActiveXInPlaceHost
+                    ?? (existingVisual is Grid g && g.Children.Count > 0 ? g.Children[0] as ActiveXInPlaceHost : null);
+
+                if (axHost != null)
+                {
+                    Canvas.SetLeft(existingVisual, control.LeftPixels);
+                    Canvas.SetTop(existingVisual, control.TopPixels);
+                    existingVisual.Width = control.WidthPixels;
+                    existingVisual.Height = control.HeightPixels;
+                    axHost.Width = control.WidthPixels;
+                    axHost.Height = control.HeightPixels;
+                    axHost.SyncFromDesignerModel();
+                    if (!GridCanvas.Children.Contains(existingVisual))
+                    {
+                        GridCanvas.Children.Add(existingVisual);
+                    }
+                    continue;
+                }
+                else
+                {
+                    // Control WPF: reemplazar visual
+                    if (existingVisual is IDisposable disposable) disposable.Dispose();
+                    GridCanvas.Children.Remove(existingVisual);
+                }
+            }
+
             var visual = ControlVisualRenderer.CreateVisual(control, OnChildVisualCreated);
             AttachControlEvents(visual, control);
             _visualMap[control] = visual;
@@ -198,10 +253,30 @@ public partial class FormDesignSurface : UserControl
     /// <summary>
     /// Regenera únicamente el elemento visual de un control individual sin reconstruir todo el lienzo,
     /// evitando parpadeos (flicker) en el resto de los controles del formulario.
+    /// Para controles ActiveX in-place, preserva la instancia COM nativa y solo sincroniza propiedades y dimensiones.
     /// </summary>
     public void RefreshSingleControlVisual(FormDesignerControl control)
     {
         if (!_visualMap.TryGetValue(control, out var oldVisual)) return;
+
+        // Si es un control ActiveX in-place (o un contenedor Grid con ActiveXInPlaceHost), no destruir ni recrear
+        // la instancia COM nativa; simplemente actualizar dimensiones, sincronizar propiedades y refrescar la captura.
+        ActiveXInPlaceHost? axHost = oldVisual as ActiveXInPlaceHost
+            ?? (oldVisual is Grid g && g.Children.Count > 0 ? g.Children[0] as ActiveXInPlaceHost : null);
+
+        if (axHost != null)
+        {
+            Canvas.SetLeft(oldVisual, control.LeftPixels);
+            Canvas.SetTop(oldVisual, control.TopPixels);
+            oldVisual.Width = control.WidthPixels;
+            oldVisual.Height = control.HeightPixels;
+            axHost.Width = control.WidthPixels;
+            axHost.Height = control.HeightPixels;
+
+            axHost.SyncFromDesignerModel();
+            UpdateSelectionFrame();
+            return;
+        }
 
         if (oldVisual.Parent is Panel parentPanel)
         {
@@ -350,6 +425,29 @@ public partial class FormDesignSurface : UserControl
                     }
                 });
             };
+
+            axHost.HostPropertyChangedByOcx += (host, dispId, propName) =>
+            {
+                Dispatcher.Invoke(() =>
+                {
+                    ModelModified?.Invoke();
+                });
+            };
+
+            axHost.HostExtenderBoundsChanged += (host) =>
+            {
+                Dispatcher.Invoke(() =>
+                {
+                    Canvas.SetLeft(visual, control.LeftPixels);
+                    Canvas.SetTop(visual, control.TopPixels);
+                    visual.Width = control.WidthPixels;
+                    visual.Height = control.HeightPixels;
+                    axHost.RefreshVisualSnapshot((int)Math.Round(control.WidthPixels), (int)Math.Round(control.HeightPixels));
+                    UpdateSelectionFrame();
+                    UpdateDimensionText();
+                    ModelModified?.Invoke();
+                });
+            };
         }
 
         visual.MouseLeftButtonDown += (s, e) =>
@@ -418,8 +516,35 @@ public partial class FormDesignSurface : UserControl
     }
 
     #region Gestión de Selección
+    private void ExitActiveXInteractiveEditMode(FormDesignerControl? exceptControl = null)
+    {
+        bool exitedAny = false;
+        foreach (var kv in _visualMap)
+        {
+            if (kv.Key == exceptControl) continue;
+
+            ActiveXInPlaceHost? axHost = kv.Value as ActiveXInPlaceHost;
+            if (axHost == null && kv.Value is Grid g && g.Children.Count > 0)
+            {
+                axHost = g.Children[0] as ActiveXInPlaceHost;
+            }
+
+            if (axHost is { IsInteractiveEditMode: true })
+            {
+                axHost.ExitInteractiveEditMode();
+                exitedAny = true;
+            }
+        }
+
+        if (exitedAny)
+        {
+            ModelModified?.Invoke();
+        }
+    }
+
     public void SelectSingleControl(FormDesignerControl control)
     {
+        ExitActiveXInteractiveEditMode(control);
         _selectedControls.Clear();
         _selectedControls.Add(control);
         _primarySelectedControl = control;
@@ -450,6 +575,7 @@ public partial class FormDesignSurface : UserControl
 
     public void ClearSelection()
     {
+        ExitActiveXInteractiveEditMode(null);
         _selectedControls.Clear();
         _primarySelectedControl = null;
 
@@ -1617,6 +1743,20 @@ public partial class FormDesignSurface : UserControl
         wpfItem.ContextMenu = cm;
     }
 
+    private ActiveXInPlaceHost? GetActiveXHostForControl(FormDesignerControl? control)
+    {
+        if (control == null || !_visualMap.TryGetValue(control, out var vis))
+            return null;
+
+        if (vis is ActiveXInPlaceHost axHost)
+            return axHost;
+
+        if (vis is Grid g && g.Children.Count > 0 && g.Children[0] is ActiveXInPlaceHost gridHost)
+            return gridHost;
+
+        return null;
+    }
+
     private void SetupCanvasContextMenu()
     {
         var cm = new ContextMenu();
@@ -1649,6 +1789,29 @@ public partial class FormDesignSurface : UserControl
 
         cm.Items.Add(new Separator());
 
+        var miEditActiveX = new MenuItem { Header = "Editar control ActiveX (UI-Active)", Visibility = Visibility.Collapsed };
+        miEditActiveX.Click += (_, _) =>
+        {
+            var sel = _primarySelectedControl ?? _selectedControls.FirstOrDefault();
+            var axHost = GetActiveXHostForControl(sel);
+            if (axHost != null)
+            {
+                if (axHost.IsInteractiveEditMode)
+                {
+                    axHost.ExitInteractiveEditMode();
+                    ModelModified?.Invoke();
+                }
+                else
+                {
+                    axHost.EnterInteractiveEditMode();
+                }
+            }
+        };
+        cm.Items.Add(miEditActiveX);
+
+        var miOleVerbs = new MenuItem { Header = "Verbos ActiveX", Visibility = Visibility.Collapsed };
+        cm.Items.Add(miOleVerbs);
+
         var miProperties = new MenuItem { Header = "Propiedades...", FontWeight = FontWeights.Bold };
         miProperties.Click += (_, _) => OpenSelectedControlProperties();
         cm.Items.Add(miProperties);
@@ -1664,6 +1827,35 @@ public partial class FormDesignSurface : UserControl
             else
             {
                 miProperties.Header = "Propiedades...";
+            }
+
+            var axHost = GetActiveXHostForControl(sel);
+            if (axHost != null)
+            {
+                miEditActiveX.Visibility = Visibility.Visible;
+                miEditActiveX.Header = axHost.IsInteractiveEditMode
+                    ? $"Finalizar edición de '{sel!.Name}'"
+                    : $"Editar '{sel!.Name}' (UI-Active)";
+
+                miOleVerbs.Items.Clear();
+                var verbs = axHost.GetOleVerbs();
+                foreach (var verb in verbs)
+                {
+                    int verbId = verb.VerbId;
+                    var verbItem = new MenuItem { Header = verb.Name };
+                    verbItem.Click += (_, _) =>
+                    {
+                        axHost.ExecuteOleVerb(verbId, Window.GetWindow(this));
+                        ModelModified?.Invoke();
+                    };
+                    miOleVerbs.Items.Add(verbItem);
+                }
+                miOleVerbs.Visibility = miOleVerbs.Items.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+            }
+            else
+            {
+                miEditActiveX.Visibility = Visibility.Collapsed;
+                miOleVerbs.Visibility = Visibility.Collapsed;
             }
         };
 

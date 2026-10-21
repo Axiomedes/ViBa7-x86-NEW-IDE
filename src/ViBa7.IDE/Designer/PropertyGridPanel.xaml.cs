@@ -20,11 +20,14 @@ public class PropertyTemplateSelector : DataTemplateSelector
     public DataTemplate? ColorTemplate { get; set; }
     public DataTemplate? PictureTemplate { get; set; }
     public DataTemplate? CustomDialogTemplate { get; set; }
+    public DataTemplate? FontTemplate { get; set; }
 
     public override DataTemplate? SelectTemplate(object item, DependencyObject container)
     {
         if (item is PropertyItemViewModel prop)
         {
+            if (prop.Type == DesignerPropertyType.FontDescription)
+                return FontTemplate;
             if (prop.Type == DesignerPropertyType.CustomDialog)
                 return CustomDialogTemplate;
             if (prop.Type == DesignerPropertyType.Picture)
@@ -58,7 +61,7 @@ public class PropertyItemViewModel : INotifyPropertyChanged
         get => _model.CurrentValue;
         set
         {
-            if (_model.CurrentValue != value)
+            if (!string.Equals(_model.CurrentValue, value, StringComparison.Ordinal))
             {
                 if (_model.SetValue(value))
                 {
@@ -67,7 +70,6 @@ public class PropertyItemViewModel : INotifyPropertyChanged
                     {
                         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ColorBrush)));
                     }
-                    _onModelChanged();
                 }
             }
         }
@@ -284,7 +286,11 @@ public partial class PropertyGridPanel : UserControl
                 ctrl,
                 _model,
                 OnInnerModelChanged,
-                (c, oldName, newName) => ControlRenamed?.Invoke(c, oldName, newName),
+                (c, oldName, newName) =>
+                {
+                    RefreshObjectList();
+                    ControlRenamed?.Invoke(c, oldName, newName);
+                },
                 name =>
                 {
                     var res = MessageBox.Show(
@@ -310,13 +316,15 @@ public partial class PropertyGridPanel : UserControl
 
     private void OnInnerModelChanged()
     {
-        if (_currentSelectedTarget is FormDesignerControl ctrl &&
-            VisualResolver?.Invoke(ctrl) is ViBa7.ActiveXHost.ActiveXInPlaceHost axHost)
+        if (_currentSelectedTarget is FormDesignerControl ctrl)
         {
-            axHost.SyncFromDesignerModel();
+            var visual = VisualResolver?.Invoke(ctrl);
+            ViBa7.ActiveXHost.ActiveXInPlaceHost? axHost = visual as ViBa7.ActiveXHost.ActiveXInPlaceHost
+                ?? (visual is Grid g && g.Children.Count > 0 ? g.Children[0] as ViBa7.ActiveXHost.ActiveXInPlaceHost : null);
+
+            axHost?.SyncFromDesignerModel();
         }
 
-        RefreshObjectList();
         ModelChanged?.Invoke();
     }
 
@@ -405,7 +413,6 @@ public partial class PropertyGridPanel : UserControl
         {
             var binding = tb.GetBindingExpression(TextBox.TextProperty);
             binding?.UpdateSource();
-            Keyboard.ClearFocus();
             e.Handled = true;
         }
     }
@@ -421,7 +428,7 @@ public partial class PropertyGridPanel : UserControl
 
     private void PropertyChoice_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (sender is ComboBox cb)
+        if (sender is ComboBox cb && cb.IsDropDownOpen)
         {
             var binding = cb.GetBindingExpression(ComboBox.SelectedValueProperty);
             binding?.UpdateSource();
@@ -725,5 +732,123 @@ public partial class PropertyGridPanel : UserControl
         });
         dlg.Owner = Window.GetWindow(this);
         dlg.ShowDialog();
+    }
+
+    private void BtnBrowseFont_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button btn && btn.DataContext is PropertyItemViewModel prop)
+        {
+            OpenFontPickerDialog(prop);
+        }
+    }
+
+    private void PropertyFont_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is FrameworkElement fe && fe.DataContext is PropertyItemViewModel prop)
+        {
+            OpenFontPickerDialog(prop);
+        }
+    }
+
+    private void OpenFontPickerDialog(PropertyItemViewModel prop)
+    {
+        string propName = prop.Model.Name;
+        FormFontDescription? currentFont = null;
+        if (_currentSelectedTarget is FormDesignerControl ctrl)
+        {
+            currentFont = ctrl.GetFontProperty(propName);
+            if (currentFont == null)
+            {
+                if (propName.Equals("Font", StringComparison.OrdinalIgnoreCase))
+                {
+                    currentFont = ctrl.Font ?? _model?.Font ?? new FormFontDescription();
+                }
+                else
+                {
+                    string curVal = prop.Model.CurrentValue ?? "";
+                    if (!string.IsNullOrWhiteSpace(curVal))
+                    {
+                        var parts = curVal.Split(',');
+                        string fontName = parts[0].Trim();
+                        double fontSize = 8.25;
+                        if (parts.Length > 1 && double.TryParse(parts[1].Replace("pt", "").Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double sz))
+                        {
+                            fontSize = sz;
+                        }
+                        currentFont = new FormFontDescription { Name = fontName, Size = fontSize };
+                    }
+                    else
+                    {
+                        currentFont = new FormFontDescription();
+                    }
+                }
+            }
+        }
+        else if (_currentSelectedTarget is FormDesignModel formModel)
+        {
+            currentFont = formModel.Font ?? new FormFontDescription();
+        }
+        else
+        {
+            currentFont = new FormFontDescription();
+        }
+
+        var parentWindow = Window.GetWindow(this);
+        if (Dialogs.FontPickerDialog.ShowDialog(parentWindow, currentFont, out var selectedFont))
+        {
+            string fontDesc = $"{selectedFont.Name}, {selectedFont.Size.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}pt";
+
+            if (_currentSelectedTarget is FormDesignerControl selectedCtrl)
+            {
+                selectedCtrl.SetFontProperty(propName, selectedFont);
+                if (propName.Equals("Font", StringComparison.OrdinalIgnoreCase))
+                {
+                    selectedCtrl.Font = selectedFont;
+                }
+                selectedCtrl.SetCustomProperty(propName, fontDesc);
+                DesignerPropertyFactory.SynchronizeStandardProperties(selectedCtrl, propName, selectedFont.Name);
+
+                // Si es un control ActiveX alojado in-place, propagar al control nativo COM
+                if (VisualResolver != null)
+                {
+                    var visual = VisualResolver(selectedCtrl);
+                    ViBa7.ActiveXHost.ActiveXInPlaceHost? axHost = visual as ViBa7.ActiveXHost.ActiveXInPlaceHost
+                        ?? (visual is Grid g && g.Children.Count > 0 ? g.Children[0] as ViBa7.ActiveXHost.ActiveXInPlaceHost : null);
+
+                    if (axHost != null)
+                    {
+                        if (propName.Equals("Font", StringComparison.OrdinalIgnoreCase))
+                        {
+                            axHost.AxControl.ConfigureAmbientFont(
+                                selectedFont.Name,
+                                (float)selectedFont.Size,
+                                selectedFont.IsBold,
+                                selectedFont.Italic,
+                                selectedFont.Underline,
+                                selectedFont.Strikethrough,
+                                (short)selectedFont.Charset);
+                        }
+
+                        axHost.AxControl.SetFontProperty(
+                            propName,
+                            selectedFont.Name,
+                            (float)selectedFont.Size,
+                            selectedFont.IsBold,
+                            selectedFont.Italic,
+                            selectedFont.Underline,
+                            selectedFont.Strikethrough,
+                            (short)selectedFont.Charset);
+                    }
+                }
+            }
+            else if (_currentSelectedTarget is FormDesignModel formModel)
+            {
+                formModel.Font = selectedFont;
+            }
+
+            prop.Model.SetValue(fontDesc);
+            OnInnerModelChanged();
+            prop.Refresh();
+        }
     }
 }

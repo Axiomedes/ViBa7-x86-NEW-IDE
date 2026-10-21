@@ -3,8 +3,8 @@
 [![Build & Test](https://img.shields.io/badge/.NET-10.0%20LTS-512BD4?logo=dotnet)](https://dotnet.microsoft.com/)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20x86%20(WOW64)-0078D6?logo=windows)](https://microsoft.com)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-282%20Passing-success.svg)](tests/ViBa7.Tests)
-[![Version](https://img.shields.io/badge/Version-00.001.0576-informational.svg)](src/ViBa7.IDE/AppVersion.cs)
+[![Tests](https://img.shields.io/badge/Tests-349%20Passing-success.svg)](tests/ViBa7.Tests)
+[![Version](https://img.shields.io/badge/Version-00.001.0636-informational.svg)](src/ViBa7.IDE/AppVersion.cs)
 [![Architecture](https://img.shields.io/badge/Architecture-Dual%20Toolchain%20(x32%20%7C%20x64)-orange.svg)](docs/TOOLCHAIN_SPEC.md)
 
 <img width="800" height="600" alt="{63E68446-0F25-41F4-B23F-D057198AFB24}" src="https://github.com/user-attachments/assets/fb8d8b25-379c-426b-8690-f5a528af5f5a" />
@@ -191,7 +191,7 @@ ViBa7-x86.slnx
 │   ├── ViBa7.ActiveXHost/     # Anfitrión COM/OLE In-Place x86 para controles ActiveX (.OCX)
 │   └── ViBa7.ProjectModel/    # Biblioteca de dominio (Parser .vbp, TypeLib, Persistencia, IntelliSense)
 ├── tests/
-│   └── ViBa7.Tests/           # Suite automatizada xUnit (282 pruebas en verde)
+│   └── ViBa7.Tests/           # Suite automatizada xUnit (349 pruebas en verde)
 ├── LIBRARY VB6/               # Base de conocimiento condensada e indexada (VB6 / COM / Win32 / msvbvm60)
 │   ├── VB6_LIBRARY_INDEX.md             # Índice maestro de ingeniería y referencia cruzada
 │   ├── VB6_LIBRARY_DATABASE.json        # Base de datos estructurada de capítulos y tópicos
@@ -218,7 +218,7 @@ dotnet build ViBa7-x86.slnx
 ```
 
 ### 2. Ejecutar la Suite de Pruebas Automatizadas
-El proyecto cuenta con **282 pruebas automatizadas** que validan la preservación de archivos, el parser `.vbp`/`.frm`, el motor de UserControls, el anfitrión ActiveX (`ViBa7.ActiveXHost`), la extracción de TypeLibs y la sincronización HiMetric:
+El proyecto cuenta con **349 pruebas automatizadas** que validan la preservación de archivos, el parser `.vbp`/`.frm`, el motor de UserControls, el anfitrión ActiveX (`ViBa7.ActiveXHost`), la extracción de TypeLibs y la sincronización HiMetric:
 ```bash
 dotnet test ViBa7-x86.slnx
 ```

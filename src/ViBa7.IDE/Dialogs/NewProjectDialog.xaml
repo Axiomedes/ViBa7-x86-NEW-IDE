@@ -1,0 +1,96 @@
+<Window x:Class="ViBa7.IDE.Dialogs.NewProjectDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Nuevo Proyecto" Height="520" Width="620"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        ResizeMode="NoResize" Background="#F0F0F0" FontFamily="Segoe UI" FontSize="12">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Cabecera explicativa -->
+        <Border Grid.Row="0" Background="#FFFFFF" BorderBrush="#D0D0D0" BorderThickness="1" CornerRadius="4" Padding="12,10" Margin="0,0,0,12">
+            <StackPanel>
+                <TextBlock Text="Crear Nuevo Proyecto en ViBa7 IDE" FontWeight="Bold" FontSize="14" Foreground="#1F4E79"/>
+                <TextBlock Text="Selecciona la plantilla inicial y el dialecto de lenguaje correspondiente a tu objetivo de compatibilidad o modernización."
+                           FontSize="11.5" Foreground="#555555" TextWrapping="Wrap" Margin="0,3,0,0"/>
+            </StackPanel>
+        </Border>
+
+        <!-- 1. Tipo de Proyecto -->
+        <GroupBox Grid.Row="1" Header=" 1. Tipo de Proyecto " FontWeight="SemiBold" Padding="10,8" Margin="0,0,0,12">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                <RadioButton x:Name="RadioTypeExe" Content="EXE Estándar" IsChecked="True" FontWeight="Normal" Margin="0,0,24,0"/>
+                <RadioButton x:Name="RadioTypeDll" Content="ActiveX DLL" FontWeight="Normal" Margin="0,0,24,0"/>
+                <RadioButton x:Name="RadioTypeControl" Content="ActiveX Control (UserControl)" FontWeight="Normal"/>
+            </StackPanel>
+        </GroupBox>
+
+        <!-- 2. Dialecto del Lenguaje (Elección crítica) -->
+        <GroupBox Grid.Row="2" Header=" 2. Dialecto del Lenguaje " FontWeight="SemiBold" Padding="12,10" Margin="0,0,0,12">
+            <StackPanel>
+                <!-- Opción A: VB6 Clásico -->
+                <Border Background="#FAFAFA" BorderBrush="#E0E0E0" BorderThickness="1" CornerRadius="4" Padding="8" Margin="0,0,0,8">
+                    <StackPanel>
+                        <RadioButton x:Name="RadioDialectVb6" Content="Visual Basic 6.0 Clásico Estándar (100% Retrocompatible)"
+                                     IsChecked="True" FontWeight="Bold" Foreground="#0B5394"/>
+                        <TextBlock Text="Semántica idéntica a VB6 SP6 (1998). Tipos Integer (16-bit), Long (32-bit), ByRef por defecto y contenedor Variant. Compilación exclusiva a Win32 (x32). Máxima estabilidad y compatibilidad con código histórico."
+                                   FontSize="11" Foreground="#444444" TextWrapping="Wrap" Margin="22,3,0,0"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Opción B: VB7 Office / VBA7 -->
+                <Border Background="#FAFAFA" BorderBrush="#E0E0E0" BorderThickness="1" CornerRadius="4" Padding="8" Margin="0,0,0,8">
+                    <StackPanel>
+                        <RadioButton x:Name="RadioDialectVb7" Content="VB7 (Office / VBA7 Bridge x64)"
+                                     FontWeight="Bold" Foreground="#274E13"/>
+                        <TextBlock Text="Incorpora los tipos de transición de 64 bits adoptados por Microsoft Office: LongPtr, LongLong, directiva Declare PtrSafe y directivas de compilación condicional #If Win64."
+                                   FontSize="11" Foreground="#444444" TextWrapping="Wrap" Margin="22,3,0,0"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Opción C: ViBa7 Moderno -->
+                <Border Background="#FAFAFA" BorderBrush="#E0E0E0" BorderThickness="1" CornerRadius="4" Padding="8">
+                    <StackPanel>
+                        <RadioButton x:Name="RadioDialectModern" Content="ViBa7 Moderno (Sucesión Avanzada)"
+                                     FontWeight="Bold" Foreground="#783F04"/>
+                        <TextBlock Text="Habilita extensiones modernas del lenguaje: manejo estructurado de excepciones Try...Catch...Finally, llamadas asincrónicas Async/Await en interfaz y tipos fuertemente tipados (Int8..Int64, UInt8..UInt64)."
+                                   FontSize="11" Foreground="#444444" TextWrapping="Wrap" Margin="22,3,0,0"/>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </GroupBox>
+
+        <!-- 3. Nombre y Directorio -->
+        <Grid Grid.Row="3" Margin="0,0,0,14">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="6"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <TextBlock Grid.Row="0" Grid.Column="0" Text="Nombre del proyecto:" VerticalAlignment="Center" Margin="0,0,10,0"/>
+            <TextBox x:Name="TxtProjectName" Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="2" Text="Proyecto1" Padding="4,2"/>
+
+            <TextBlock Grid.Row="2" Grid.Column="0" Text="Directorio:" VerticalAlignment="Center" Margin="0,0,10,0"/>
+            <TextBox x:Name="TxtProjectLocation" Grid.Row="2" Grid.Column="1" Padding="4,2" Margin="0,0,6,0"/>
+            <Button x:Name="BtnBrowseLocation" Grid.Row="2" Grid.Column="2" Content="Examinar..." Width="85" Padding="6,2" Click="BtnBrowseLocation_Click"/>
+        </Grid>
+
+        <!-- 4. Botones Aceptar / Cancelar -->
+        <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button x:Name="BtnOk" Content="Crear Proyecto" Width="110" Height="28" FontWeight="SemiBold" IsDefault="True" Click="BtnOk_Click" Margin="0,0,8,0"/>
+            <Button x:Name="BtnCancel" Content="Cancelar" Width="90" Height="28" IsCancel="True"/>
+        </StackPanel>
+    </Grid>
+</Window>

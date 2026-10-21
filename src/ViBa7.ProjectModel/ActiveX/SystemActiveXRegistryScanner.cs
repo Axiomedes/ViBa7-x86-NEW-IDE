@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -123,8 +123,8 @@ public static class SystemActiveXRegistryScanner
                     if (string.IsNullOrWhiteSpace(filePath)) continue;
 
                     string ext = Path.GetExtension(filePath).ToLowerInvariant();
-                    // Solo considerar extensiones de componentes binarios ActiveX
-                    if (ext is not (".ocx" or ".dll" or ".tlb" or ".exe")) continue;
+                    // Solo considerar extensiones de componentes binarios ActiveX y librerías de tipos
+                    if (ext is not (".ocx" or ".dll" or ".tlb" or ".olb" or ".exe")) continue;
 
                     // Determinar si es control
                     bool isControl = ext == ".ocx";

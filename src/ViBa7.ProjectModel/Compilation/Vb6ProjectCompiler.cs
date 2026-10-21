@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -69,6 +69,15 @@ public class Vb6ProjectCompiler
 
             progressCallback?.Invoke($"Estructurando metadatos de {formNames.Count} objeto(s)...");
 
+            // Extraer componentes ActiveX / OCX cargados o declarados en el proyecto
+            var ocxLibs = new List<ViBa7.ProjectModel.ActiveX.OcxLibraryInfo>(project.LoadedOcxLibraries);
+            var activeXItems = project.ActiveXControls.ToList();
+            if (activeXItems.Count > 0 || ocxLibs.Count > 0)
+            {
+                int totalActiveX = Math.Max(activeXItems.Count, ocxLibs.Count);
+                messages.Add($"Componentes ActiveX detectados en el proyecto: {totalActiveX}.");
+            }
+
             var options = new Vb6CompileOptions(
                 OutputExePath: outPath,
                 ProjectName: projName,
@@ -79,11 +88,21 @@ public class Vb6ProjectCompiler
                 RevisionVersion: project.RevisionVer,
                 CompanyName: project.CompanyName,
                 FileDescription: project.FileDescription,
-                LegalCopyright: project.LegalCopyright
+                LegalCopyright: project.LegalCopyright,
+                GenerateSxSManifest: true,
+                ActiveXComponents: ocxLibs.Count > 0 ? ocxLibs : null
             );
 
             progressCallback?.Invoke("Generando cabeceras PE32, stubs x86 y enlace a MSVBVM60.DLL...");
             byte[] exeBytes = _builder.BuildExecutable(options, formNames);
+
+            // Generar manifiesto Side-by-Side (SxS) para aislamiento Reg-Free COM si hay componentes OCX
+            if (options.GenerateSxSManifest && (ocxLibs.Count > 0 || activeXItems.Count > 0))
+            {
+                progressCallback?.Invoke("Generando manifiesto Side-by-Side (SxS) para Reg-Free COM...");
+                string manifestPath = Vb6ManifestGenerator.WriteManifestFile(outPath, options, ocxLibs);
+                messages.Add($"Manifiesto Reg-Free COM emitido: {Path.GetFileName(manifestPath)}");
+            }
 
             progressCallback?.Invoke($"Ejecutable emitido exitosamente ({exeBytes.Length} bytes).");
             messages.Add($"Tamaño del binario generado: {exeBytes.Length:N0} bytes.");

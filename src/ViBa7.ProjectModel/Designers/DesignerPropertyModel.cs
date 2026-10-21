@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -104,6 +104,44 @@ public static class DesignerPropertyFactory
         new DesignerPropertyChoice("0 - Standard", "0"),
         new DesignerPropertyChoice("1 - Graphical", "1")
     };
+
+    /// <summary>
+    /// Proveedor de lista de tipografías instaladas en el sistema (configurado desde la capa UI de WPF).
+    /// </summary>
+    public static Func<List<DesignerPropertyChoice>>? SystemFontChoicesProvider { get; set; }
+
+    private static readonly List<DesignerPropertyChoice> FallbackFontChoices = new()
+    {
+        new("Arial", "Arial"),
+        new("Calibri", "Calibri"),
+        new("Comic Sans MS", "Comic Sans MS"),
+        new("Consolas", "Consolas"),
+        new("Courier New", "Courier New"),
+        new("Georgia", "Georgia"),
+        new("Impact", "Impact"),
+        new("Lucida Console", "Lucida Console"),
+        new("Microsoft Sans Serif", "Microsoft Sans Serif"),
+        new("MS Sans Serif", "MS Sans Serif"),
+        new("Segoe UI", "Segoe UI"),
+        new("Tahoma", "Tahoma"),
+        new("Times New Roman", "Times New Roman"),
+        new("Trebuchet MS", "Trebuchet MS"),
+        new("Verdana", "Verdana")
+    };
+
+    public static List<DesignerPropertyChoice> GetSystemFontChoices()
+    {
+        if (SystemFontChoicesProvider != null)
+        {
+            try
+            {
+                var choices = SystemFontChoicesProvider();
+                if (choices != null && choices.Count > 0) return choices;
+            }
+            catch { }
+        }
+        return FallbackFontChoices;
+    }
 
     /// <summary>
     /// Determina si una propiedad representa un color OLE / VB6 (&amp;H00BBGGRR&amp;, OLE_COLOR, colores de sistema).
@@ -215,6 +253,131 @@ public static class DesignerPropertyFactory
             ctrl.Height = height;
             ctrl.UpdateExtentsFromDimensions();
         }
+        else if (string.Equals(propName, "FontName", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(val))
+        {
+            ctrl.Font ??= new FormFontDescription();
+            ctrl.Font.Name = val.Trim();
+        }
+        else if (string.Equals(propName, "FontSize", StringComparison.OrdinalIgnoreCase) && double.TryParse(val, NumberStyles.Float, CultureInfo.InvariantCulture, out double fsz))
+        {
+            ctrl.Font ??= new FormFontDescription();
+            ctrl.Font.Size = fsz;
+        }
+        else if (string.Equals(propName, "FontBold", StringComparison.OrdinalIgnoreCase))
+        {
+            ctrl.Font ??= new FormFontDescription();
+            ctrl.Font.IsBold = val.Equals("True", StringComparison.OrdinalIgnoreCase) || val == "-1" || val == "1";
+        }
+        else if (string.Equals(propName, "FontItalic", StringComparison.OrdinalIgnoreCase))
+        {
+            ctrl.Font ??= new FormFontDescription();
+            ctrl.Font.Italic = val.Equals("True", StringComparison.OrdinalIgnoreCase) || val == "-1" || val == "1";
+        }
+        else if (string.Equals(propName, "FontUnderline", StringComparison.OrdinalIgnoreCase))
+        {
+            ctrl.Font ??= new FormFontDescription();
+            ctrl.Font.Underline = val.Equals("True", StringComparison.OrdinalIgnoreCase) || val == "-1" || val == "1";
+        }
+        else if (string.Equals(propName, "FontStrikethru", StringComparison.OrdinalIgnoreCase))
+        {
+            ctrl.Font ??= new FormFontDescription();
+            ctrl.Font.Strikethrough = val.Equals("True", StringComparison.OrdinalIgnoreCase) || val == "-1" || val == "1";
+        }
+        else if (propName.Contains("CharCode", StringComparison.OrdinalIgnoreCase))
+        {
+            string norm = NormalizeIconCharCode(val);
+            ctrl.SetCustomProperty(propName, norm);
+        }
+        else if (propName.EndsWith("Font", StringComparison.OrdinalIgnoreCase) || propName.Contains("Font", StringComparison.OrdinalIgnoreCase))
+        {
+            var f = ctrl.GetFontProperty(propName) ?? new FormFontDescription();
+            if (!string.IsNullOrWhiteSpace(val))
+            {
+                var parts = val.Split(',');
+                f.Name = parts[0].Trim();
+                if (parts.Length > 1 && double.TryParse(parts[1].Replace("pt", "").Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out double sz))
+                {
+                    f.Size = sz;
+                }
+            }
+            ctrl.SetFontProperty(propName, f);
+            if (propName.Equals("Font", StringComparison.OrdinalIgnoreCase))
+            {
+                ctrl.Font = f;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Valida y normaliza un código de carácter de icono (ej. axLabelPlus IconCharCode) a formato canónico &amp;HXXXX.
+    /// Soporta entradas como: "EA01", "ea01", "&amp;HEA01", "U+EA01", "0xEA01", o valor decimal "59905".
+    /// </summary>
+    public static string NormalizeIconCharCode(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return string.Empty;
+        string s = raw.Trim();
+        if (s.StartsWith("\"") && s.EndsWith("\"") && s.Length >= 2)
+        {
+            s = s[1..^1].Trim();
+        }
+        s = s.Replace(" ", "");
+        if (s.StartsWith("U+", StringComparison.OrdinalIgnoreCase) || s.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+        {
+            s = "&H" + s[2..];
+        }
+        else if (!s.StartsWith("&H", StringComparison.OrdinalIgnoreCase))
+        {
+            // Si es puramente numérico decimal
+            if (long.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out long decVal))
+            {
+                s = "&H" + decVal.ToString("X");
+            }
+            else
+            {
+                // Puede ser un hex directo sin prefijo, ej "EA01"
+                bool isHex = s.Length > 0 && s.All(Uri.IsHexDigit);
+                if (isHex)
+                {
+                    s = "&H" + s;
+                }
+            }
+        }
+
+        if (s.StartsWith("&H", StringComparison.OrdinalIgnoreCase))
+        {
+            string hexPart = s[2..].TrimEnd('&');
+            return "&H" + hexPart.ToUpperInvariant();
+        }
+
+        return s.ToUpperInvariant();
+    }
+
+    /// <summary>
+    /// Convierte un código de carácter de icono (ej. "&amp;HEA01", "EA01", "59905") a su punto de código entero Unicode.
+    /// </summary>
+    public static int? ParseCharCode(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        string norm = NormalizeIconCharCode(raw);
+        int? val = null;
+        if (norm.StartsWith("&H", StringComparison.OrdinalIgnoreCase))
+        {
+            string hex = norm[2..].TrimEnd('&');
+            if (int.TryParse(hex, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out int hVal))
+            {
+                val = hVal;
+            }
+        }
+        else if (int.TryParse(norm, NumberStyles.Integer, CultureInfo.InvariantCulture, out int dVal))
+        {
+            val = dVal;
+        }
+
+        if (val.HasValue && val.Value >= 0 && val.Value <= 0x10FFFF && !(val.Value >= 0xD800 && val.Value <= 0xDFFF))
+        {
+            return val.Value;
+        }
+        return null;
     }
 
     /// <summary>
@@ -257,8 +420,21 @@ public static class DesignerPropertyFactory
             return (DesignerPropertyType.Picture, new List<DesignerPropertyChoice>());
         }
 
-        // 4. Font
-        if (t.Contains("FONT") || propName.Contains("Font", StringComparison.OrdinalIgnoreCase))
+        // 4. FontName (lista desplegable con las tipografías instaladas en el sistema)
+        if (propName.Equals("FontName", StringComparison.OrdinalIgnoreCase) ||
+            (propName.Contains("Font", StringComparison.OrdinalIgnoreCase) && propName.EndsWith("Name", StringComparison.OrdinalIgnoreCase)))
+        {
+            return (DesignerPropertyType.EnumChoice, GetSystemFontChoices());
+        }
+
+        // 4.5 Códigos de carácter de iconos (ej. IconCharCode, CharCode)
+        if (propName.Contains("CharCode", StringComparison.OrdinalIgnoreCase))
+        {
+            return (DesignerPropertyType.Text, new List<DesignerPropertyChoice>());
+        }
+
+        // 5. Font (objeto StdFont / bloque BeginProperty Font con selector de fuente)
+        if (t.Contains("FONT") || propName.Equals("Font", StringComparison.OrdinalIgnoreCase) || propName.EndsWith("Font", StringComparison.OrdinalIgnoreCase) || propName.EndsWith(".Font", StringComparison.OrdinalIgnoreCase))
         {
             return (DesignerPropertyType.FontDescription, new List<DesignerPropertyChoice>());
         }
@@ -737,51 +913,54 @@ public static class DesignerPropertyFactory
             return list;
         }
 
-        // Caption o Text según el tipo de control
-        var toolboxInfo = ControlToolboxRegistry.Find(ctrl.TypeName);
-        if (toolboxInfo?.HasCaption == true || !string.IsNullOrEmpty(ctrl.Caption) ||
-            ctrl.TypeName.EndsWith("Button", StringComparison.OrdinalIgnoreCase) ||
-            ctrl.TypeName.EndsWith("Label", StringComparison.OrdinalIgnoreCase) ||
-            ctrl.TypeName.EndsWith("Frame", StringComparison.OrdinalIgnoreCase) ||
-            ctrl.TypeName.EndsWith("CheckBox", StringComparison.OrdinalIgnoreCase) ||
-            ctrl.TypeName.EndsWith("OptionButton", StringComparison.OrdinalIgnoreCase))
+        // Caption o Text según el tipo de control (exclusivo de controles intrínsecos VB6; UserControls y OCX los exponen desde su código/TypeLib)
+        if (ctrl.IsIntrinsic)
         {
-            list.Add(new DesignerPropertyItem
+            var toolboxInfo = ControlToolboxRegistry.Find(ctrl.TypeName);
+            if (toolboxInfo?.HasCaption == true || !string.IsNullOrEmpty(ctrl.Caption) ||
+                ctrl.TypeName.EndsWith("Button", StringComparison.OrdinalIgnoreCase) ||
+                ctrl.TypeName.EndsWith("Label", StringComparison.OrdinalIgnoreCase) ||
+                ctrl.TypeName.EndsWith("Frame", StringComparison.OrdinalIgnoreCase) ||
+                ctrl.TypeName.EndsWith("CheckBox", StringComparison.OrdinalIgnoreCase) ||
+                ctrl.TypeName.EndsWith("OptionButton", StringComparison.OrdinalIgnoreCase))
             {
-                Name = "Caption",
-                DisplayName = "Caption",
-                Category = "Appearance",
-                Description = "Devuelve o establece el texto que se muestra en el control.",
-                Type = DesignerPropertyType.Text,
-                CurrentValue = ctrl.Caption,
-                ValueSetter = val =>
+                list.Add(new DesignerPropertyItem
                 {
-                    ctrl.Caption = val;
-                    onModelChanged();
-                    return true;
-                }
-            });
-        }
+                    Name = "Caption",
+                    DisplayName = "Caption",
+                    Category = "Appearance",
+                    Description = "Devuelve o establece el texto que se muestra en el control.",
+                    Type = DesignerPropertyType.Text,
+                    CurrentValue = ctrl.Caption,
+                    ValueSetter = val =>
+                    {
+                        ctrl.Caption = val;
+                        onModelChanged();
+                        return true;
+                    }
+                });
+            }
 
-        if (toolboxInfo?.HasText == true || !string.IsNullOrEmpty(ctrl.Text) ||
-            ctrl.TypeName.EndsWith("TextBox", StringComparison.OrdinalIgnoreCase) ||
-            ctrl.TypeName.EndsWith("ComboBox", StringComparison.OrdinalIgnoreCase))
-        {
-            list.Add(new DesignerPropertyItem
+            if (toolboxInfo?.HasText == true || !string.IsNullOrEmpty(ctrl.Text) ||
+                ctrl.TypeName.EndsWith("TextBox", StringComparison.OrdinalIgnoreCase) ||
+                ctrl.TypeName.EndsWith("ComboBox", StringComparison.OrdinalIgnoreCase))
             {
-                Name = "Text",
-                DisplayName = "Text",
-                Category = "Appearance",
-                Description = "Devuelve o establece el texto contenido en el control.",
-                Type = DesignerPropertyType.Text,
-                CurrentValue = ctrl.Text,
-                ValueSetter = val =>
+                list.Add(new DesignerPropertyItem
                 {
-                    ctrl.Text = val;
-                    onModelChanged();
-                    return true;
-                }
-            });
+                    Name = "Text",
+                    DisplayName = "Text",
+                    Category = "Appearance",
+                    Description = "Devuelve o establece el texto contenido en el control.",
+                    Type = DesignerPropertyType.Text,
+                    CurrentValue = ctrl.Text,
+                    ValueSetter = val =>
+                    {
+                        ctrl.Text = val;
+                        onModelChanged();
+                        return true;
+                    }
+                });
+            }
         }
 
         // Posicionamiento y dimensiones en Twips
@@ -957,11 +1136,34 @@ public static class DesignerPropertyFactory
             }
         });
 
-        // Colores
         list.Add(new DesignerPropertyItem
         {
-            Name = "BackColor",
-            DisplayName = "BackColor",
+            Name = "Tag",
+            DisplayName = "Tag",
+            Category = "General",
+            Description = "Almacena cualquier dato adicional necesario para su programa.",
+            Type = DesignerPropertyType.Text,
+            CurrentValue = ctrl.CustomProperties.FirstOrDefault(p => p.Name.Equals("Tag", StringComparison.OrdinalIgnoreCase))?.Value ?? "",
+            ValueSetter = val =>
+            {
+                var p = ctrl.CustomProperties.FirstOrDefault(cp => cp.Name.Equals("Tag", StringComparison.OrdinalIgnoreCase));
+                if (p != null) p.Value = val;
+                else ctrl.CustomProperties.Add(new FormPropertyItem { Name = "Tag", Value = val });
+                onModelChanged();
+                return true;
+            }
+        });
+
+        // Propiedades estándar intrínsecas de VB6 (Colores, Font, Alineación, Imágenes)
+        // Solo aplican por defecto a controles intrínsecos de VB. Para UserControls y OCX,
+        // estas propiedades deben provenir exclusivamente de su código fuente (.ctl) o TypeLib.
+        if (ctrl.IsIntrinsic)
+        {
+            // Colores
+            list.Add(new DesignerPropertyItem
+            {
+                Name = "BackColor",
+                DisplayName = "BackColor",
             Category = "Appearance",
             Description = "Devuelve o establece el color de fondo utilizado para mostrar texto y gráficos en el control.",
             Type = DesignerPropertyType.ColorHex,
@@ -989,6 +1191,27 @@ public static class DesignerPropertyFactory
                 return true;
             }
         });
+
+        // Fuente tipográfica (Font / StdFont) para controles con capacidad de texto
+        bool hasFont = !ctrl.IsTimer &&
+                       !ctrl.TypeName.EndsWith("Line", StringComparison.OrdinalIgnoreCase) &&
+                       !ctrl.TypeName.EndsWith("Shape", StringComparison.OrdinalIgnoreCase);
+        if (hasFont)
+        {
+            list.Add(new DesignerPropertyItem
+            {
+                Name = "Font",
+                DisplayName = "Font",
+                Category = "Font",
+                Description = "Devuelve o establece el objeto de fuente (StdFont) utilizado para mostrar texto en el control.",
+                Type = DesignerPropertyType.FontDescription,
+                CurrentValue = ctrl.Font?.Name != null
+                    ? $"{ctrl.Font.Name}, {ctrl.Font.Size.ToString("0.##", CultureInfo.InvariantCulture)}pt"
+                    : (form?.Font?.Name != null ? $"{form.Font.Name}, {form.Font.Size.ToString("0.##", CultureInfo.InvariantCulture)}pt" : "MS Sans Serif, 8pt"),
+                IsReadOnly = true,
+                ValueSetter = _ => true
+            });
+        }
 
         // Alineación (si aplica)
         if (ctrl.TypeName.EndsWith("Label", StringComparison.OrdinalIgnoreCase) ||
@@ -1144,6 +1367,7 @@ public static class DesignerPropertyFactory
                 }
             });
         }
+        }
 
         // Extraer propiedades expuestas públicas de UserControls del proyecto
         var exposedProps = UserControlPropertiesResolver?.Invoke(ctrl.TypeName);
@@ -1169,6 +1393,25 @@ public static class DesignerPropertyFactory
                 var finalType = exp.InferredType != DesignerPropertyType.Text ? exp.InferredType : inferredType;
                 var finalChoices = exp.Choices.Count > 0 ? exp.Choices : (inferredChoices.Count > 0 ? inferredChoices : (finalType == DesignerPropertyType.Boolean ? BoolChoices : new List<DesignerPropertyChoice>()));
 
+                if (exp.Name.Contains("CharCode", StringComparison.OrdinalIgnoreCase))
+                {
+                    finalType = DesignerPropertyType.Text;
+                    curVal = NormalizeIconCharCode(curVal);
+                }
+
+                if (finalType == DesignerPropertyType.FontDescription)
+                {
+                    var f = ctrl.GetFontProperty(exp.Name);
+                    if (f != null && !string.IsNullOrEmpty(f.Name))
+                    {
+                        curVal = $"{f.Name}, {f.Size.ToString("0.##", CultureInfo.InvariantCulture)}pt";
+                    }
+                    else if (exp.Name.Equals("Font", StringComparison.OrdinalIgnoreCase) && ctrl.Font?.Name != null)
+                    {
+                        curVal = $"{ctrl.Font.Name}, {ctrl.Font.Size.ToString("0.##", CultureInfo.InvariantCulture)}pt";
+                    }
+                }
+
                 list.Add(new DesignerPropertyItem
                 {
                     Name = exp.Name,
@@ -1178,8 +1421,13 @@ public static class DesignerPropertyFactory
                     Type = finalType,
                     Choices = finalChoices,
                     CurrentValue = curVal,
+                    IsReadOnly = finalType == DesignerPropertyType.FontDescription,
                     ValueSetter = val =>
                     {
+                        if (exp.Name.Contains("CharCode", StringComparison.OrdinalIgnoreCase))
+                        {
+                            val = NormalizeIconCharCode(val);
+                        }
                         ctrl.SetCustomProperty(exp.Name, val);
                         SynchronizeStandardProperties(ctrl, exp.Name, val);
                         onModelChanged();
@@ -1190,44 +1438,74 @@ public static class DesignerPropertyFactory
         }
 
         // Extraer propiedades COM / TypeLib registradas para controles ActiveX / OCX
-        var typeLibMembers = IntelliSense.VbControlMemberCatalog.GetMembersForControl(ctrl.TypeName);
-        if (typeLibMembers.Count > 0)
+        // Si el control ya fue resuelto como UserControl de proyecto (.ctl), sus propiedades
+        // provienen exclusivamente de su código y no deben mezclarse con TypeLibs externas de OCX.
+        if (exposedProps == null)
         {
-            foreach (var mem in typeLibMembers)
+            var typeLibMembers = IntelliSense.VbControlMemberCatalog.GetMembersForControl(ctrl.TypeName);
+            if (typeLibMembers.Count > 0)
             {
-                if (mem.Kind != IntelliSense.VbSymbolKind.Property) continue;
-                if (handledPropNames.Contains(mem.Name)) continue;
-                handledPropNames.Add(mem.Name);
-
-                var existingCustom = ctrl.CustomProperties.FirstOrDefault(p => string.Equals(p.Name, mem.Name, StringComparison.OrdinalIgnoreCase));
-                string curVal = existingCustom != null ? existingCustom.Value : string.Empty;
-
-                var (propType, choices) = InferPropertyType(mem.Name, mem.ReturnType, curVal);
-
-                list.Add(new DesignerPropertyItem
+                foreach (var mem in typeLibMembers)
                 {
-                    Name = mem.Name,
-                    DisplayName = mem.Name,
-                    Category = "ActiveX / TypeLib",
-                    Description = !string.IsNullOrEmpty(mem.Description) ? mem.Description : $"Propiedad COM '{mem.Name}' de {ctrl.TypeName}.",
-                    Type = propType,
-                    Choices = choices,
-                    CurrentValue = curVal,
-                    ValueSetter = val =>
+                    if (mem.Kind != IntelliSense.VbSymbolKind.Property) continue;
+                    if (mem.IsHidden || !mem.IsBrowsable || mem.IsReadOnly) continue;
+                    if (mem.Parameters.Any(p => !p.IsOptional)) continue;
+                    if (handledPropNames.Contains(mem.Name)) continue;
+                    handledPropNames.Add(mem.Name);
+
+                    var existingCustom = ctrl.CustomProperties.FirstOrDefault(p => string.Equals(p.Name, mem.Name, StringComparison.OrdinalIgnoreCase));
+                    string curVal = existingCustom != null ? existingCustom.Value : string.Empty;
+
+                    var (propType, choices) = InferPropertyType(mem.Name, mem.ReturnType, curVal);
+
+                    if (mem.Name.Contains("CharCode", StringComparison.OrdinalIgnoreCase))
                     {
-                        ctrl.SetCustomProperty(mem.Name, val);
-                        SynchronizeStandardProperties(ctrl, mem.Name, val);
-                        onModelChanged();
-                        return true;
+                        propType = DesignerPropertyType.Text;
+                        curVal = NormalizeIconCharCode(curVal);
                     }
-                });
+
+                    if (propType == DesignerPropertyType.FontDescription)
+                    {
+                        var f = ctrl.GetFontProperty(mem.Name);
+                        if (f != null && !string.IsNullOrEmpty(f.Name))
+                        {
+                            curVal = $"{f.Name}, {f.Size.ToString("0.##", CultureInfo.InvariantCulture)}pt";
+                        }
+                        else if (mem.Name.Equals("Font", StringComparison.OrdinalIgnoreCase) && ctrl.Font?.Name != null)
+                        {
+                            curVal = $"{ctrl.Font.Name}, {ctrl.Font.Size.ToString("0.##", CultureInfo.InvariantCulture)}pt";
+                        }
+                    }
+
+                    list.Add(new DesignerPropertyItem
+                    {
+                        Name = mem.Name,
+                        DisplayName = mem.Name,
+                        Category = "ActiveX / TypeLib",
+                        Description = !string.IsNullOrEmpty(mem.Description) ? mem.Description : $"Propiedad COM '{mem.Name}' de {ctrl.TypeName}.",
+                        Type = propType,
+                        Choices = choices,
+                        CurrentValue = curVal,
+                        IsReadOnly = propType == DesignerPropertyType.FontDescription,
+                        ValueSetter = val =>
+                        {
+                            if (mem.Name.Contains("CharCode", StringComparison.OrdinalIgnoreCase))
+                            {
+                                val = NormalizeIconCharCode(val);
+                            }
+                            ctrl.SetCustomProperty(mem.Name, val);
+                            SynchronizeStandardProperties(ctrl, mem.Name, val);
+                            onModelChanged();
+                            return true;
+                        }
+                    });
+                }
             }
         }
 
         // Exponer propiedades adicionales personalizadas presentes en CustomProperties (de OCX o UserControls)
         foreach (var cust in ctrl.CustomProperties)
         {
-            if (cust.IsBeginProperty) continue;
             if (handledPropNames.Contains(cust.Name)) continue;
             if (cust.Name.Equals("_ExtentX", StringComparison.OrdinalIgnoreCase) ||
                 cust.Name.Equals("_ExtentY", StringComparison.OrdinalIgnoreCase) ||
@@ -1236,9 +1514,56 @@ public static class DesignerPropertyFactory
                 continue;
             }
 
+            if (cust.IsBeginProperty)
+            {
+                // Si es un bloque BeginProperty pero de fuente (ej. IconFont o Font guardado en el .frm), exponerlo con selector
+                if (cust.Name.EndsWith("Font", StringComparison.OrdinalIgnoreCase) || cust.Name.Contains("Font", StringComparison.OrdinalIgnoreCase))
+                {
+                    handledPropNames.Add(cust.Name);
+                    var f = ctrl.GetFontProperty(cust.Name);
+                    string fontDescVal = f != null && !string.IsNullOrEmpty(f.Name)
+                        ? $"{f.Name}, {f.Size.ToString("0.##", CultureInfo.InvariantCulture)}pt"
+                        : "MS Sans Serif, 8pt";
+
+                    list.Add(new DesignerPropertyItem
+                    {
+                        Name = cust.Name,
+                        DisplayName = cust.Name,
+                        Category = "Font",
+                        Description = $"Fuente tipográfica '{cust.Name}' del control {ctrl.Name}.",
+                        Type = DesignerPropertyType.FontDescription,
+                        CurrentValue = fontDescVal,
+                        IsReadOnly = true,
+                        ValueSetter = val =>
+                        {
+                            ctrl.SetCustomProperty(cust.Name, val);
+                            SynchronizeStandardProperties(ctrl, cust.Name, val);
+                            onModelChanged();
+                            return true;
+                        }
+                    });
+                }
+                continue;
+            }
+
             handledPropNames.Add(cust.Name);
             string pName = cust.Name;
             var (propType, choices) = InferPropertyType(pName, null, cust.Value);
+
+            string curCustomVal = cust.Value;
+            if (pName.Contains("CharCode", StringComparison.OrdinalIgnoreCase))
+            {
+                propType = DesignerPropertyType.Text;
+                curCustomVal = NormalizeIconCharCode(curCustomVal);
+            }
+            else if (propType == DesignerPropertyType.FontDescription)
+            {
+                var f = ctrl.GetFontProperty(pName);
+                if (f != null && !string.IsNullOrEmpty(f.Name))
+                {
+                    curCustomVal = $"{f.Name}, {f.Size.ToString("0.##", CultureInfo.InvariantCulture)}pt";
+                }
+            }
 
             list.Add(new DesignerPropertyItem
             {
@@ -1248,9 +1573,14 @@ public static class DesignerPropertyFactory
                 Description = $"Propiedad personalizada del control {ctrl.Name}.",
                 Type = propType,
                 Choices = choices,
-                CurrentValue = cust.Value,
+                CurrentValue = curCustomVal,
+                IsReadOnly = propType == DesignerPropertyType.FontDescription,
                 ValueSetter = val =>
                 {
+                    if (pName.Contains("CharCode", StringComparison.OrdinalIgnoreCase))
+                    {
+                        val = NormalizeIconCharCode(val);
+                    }
                     cust.Value = val;
                     ctrl.SetCustomProperty(pName, val);
                     SynchronizeStandardProperties(ctrl, pName, val);

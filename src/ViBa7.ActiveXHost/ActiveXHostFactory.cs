@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Windows;
 using Microsoft.Win32;
+using ViBa7.ActiveXHost.Diagnostics;
 using ViBa7.ProjectModel.ActiveX;
 using ViBa7.ProjectModel.Designers;
 using ViBa7.ProjectModel.IntelliSense;
@@ -90,7 +91,19 @@ public static class ActiveXHostFactory
 
         // WebBrowser (SHDOCVW / IEFRAME)
         ["SHDocVw.WebBrowser"] = "{8856F961-340A-11D0-A96B-00C04FD705A2}",
-        ["WebBrowser"] = "{8856F961-340A-11D0-A96B-00C04FD705A2}"
+        ["WebBrowser"] = "{8856F961-340A-11D0-A96B-00C04FD705A2}",
+
+        // Winsock (MSWINSCK.OCX)
+        ["MSWinsockLib.Winsock"] = "{248DD896-BB45-11CF-9ABC-0080C7E7B78D}",
+        ["Winsock"] = "{248DD896-BB45-11CF-9ABC-0080C7E7B78D}",
+
+        // MSComm (MSCOMM32.OCX)
+        ["MSCommLib.MSComm"] = "{648A5600-2C6E-101B-82B6-000000000014}",
+        ["MSComm"] = "{648A5600-2C6E-101B-82B6-000000000014}",
+
+        // Internet Transfer Control (MSINET.OCX)
+        ["InetCtlsObjects.Inet"] = "{48E59293-9880-11CF-9754-00AA00C00908}",
+        ["Inet"] = "{48E59293-9880-11CF-9754-00AA00C00908}"
     };
 
     // Controles OCX que son intrínsecamente invisibles en tiempo de ejecución y se representan con un icono fijo en diseño
@@ -227,6 +240,8 @@ public static class ActiveXHostFactory
 
         if (!IsControlRegistered(clsid, out string serverPath))
         {
+            ActiveXDiagnosticsLogger.LogError("Discovery", clsid, unchecked((int)0x80040154), control.Name,
+                $"El control '{control.TypeName}' ({clsid}) no está registrado en el subsistema COM x86.");
             return null;
         }
 
@@ -265,6 +280,8 @@ public static class ActiveXHostFactory
             bool rendered = host.TryInitializeAndRender();
             if (!rendered && host.AxControl.HasInitializationError)
             {
+                ActiveXDiagnosticsLogger.LogError("InPlaceHostInit", clsid, unchecked((int)0x80004005), control.Name,
+                    $"Error al inicializar instancia ActiveX in-place para '{control.TypeName}'.");
                 host.Dispose();
                 return null;
             }
@@ -275,11 +292,91 @@ public static class ActiveXHostFactory
                 return null;
             }
 
+            ActiveXDiagnosticsLogger.LogSuccess("InPlaceHostCreated", clsid, control.Name,
+                $"Contenedor in-place creado exitosamente ({initW}x{initH} px, server: {serverPath})");
             return host;
         }
-        catch
+        catch (Exception ex)
         {
-            // Fallback silencioso al renderizador simulado si la instanciación COM falla
+            ActiveXDiagnosticsLogger.LogError("InPlaceHostException", clsid, ex.HResult, control.Name, ex.Message);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Intenta crear e inicializar un contenedor interactivo de tiempo de ejecución (ActiveXRuntimeHost / HwndHost)
+    /// con DISPID_AMBIENT_USERMODE = True para la ventana de ejecución F5 (LiveFormWindow).
+    /// </summary>
+    public static ActiveXRuntimeHost? TryCreateRuntimeHost(FormDesignerControl control, FrameworkElement? fallbackVisual = null)
+    {
+        if (!EnableInPlaceActiveXHosting) return null;
+
+        string normType = control.TypeName.ToUpperInvariant();
+        if (normType.StartsWith("VB."))
+        {
+            return null;
+        }
+
+        if (NonVisualOcxTypes.Contains(control.TypeName))
+        {
+            return null;
+        }
+
+        if (!TryResolveClsid(control.TypeName, out string clsid))
+        {
+            return null;
+        }
+
+        if (!IsControlRegistered(clsid, out string serverPath))
+        {
+            ActiveXDiagnosticsLogger.LogError("RuntimeDiscovery", clsid, unchecked((int)0x80040154), control.Name,
+                $"El control runtime '{control.TypeName}' ({clsid}) no está registrado.");
+            return null;
+        }
+
+        if (!string.IsNullOrWhiteSpace(serverPath) && File.Exists(serverPath))
+        {
+            try
+            {
+                if (!VbControlMemberCatalog.GetRegisteredOcxLibraries().Any(l => string.Equals(l.FilePath, serverPath, StringComparison.OrdinalIgnoreCase)))
+                {
+                    if (OcxTypeLibReader.TryReadTypeLib(serverPath, out var libInfo, out _) && libInfo != null)
+                    {
+                        VbControlMemberCatalog.RegisterOcxLibrary(libInfo);
+                    }
+                }
+            }
+            catch { }
+        }
+
+        try
+        {
+            int initW = Math.Max(24, (int)Math.Round(control.WidthPixels));
+            int initH = Math.Max(20, (int)Math.Round(control.HeightPixels));
+
+            var runtimeHost = new ActiveXRuntimeHost(clsid, control.TypeName, initW, initH)
+            {
+                BoundControl = control,
+                Width = control.WidthPixels,
+                Height = control.HeightPixels,
+                FallbackVisual = fallbackVisual
+            };
+
+            if (!runtimeHost.TryInitializeRuntime())
+            {
+                ActiveXDiagnosticsLogger.LogError("RuntimeHostInit", clsid, unchecked((int)0x80004005), control.Name,
+                    $"Error al inicializar contenedor interactivo runtime para '{control.TypeName}'.");
+                runtimeHost.Dispose();
+                return null;
+            }
+
+            ActiveXDiagnosticsLogger.LogSuccess("RuntimeHostCreated", clsid, control.Name,
+                $"Contenedor interactivo runtime inicializado exitosamente ({initW}x{initH} px)");
+            return runtimeHost;
+        }
+        catch (Exception ex)
+        {
+            ActiveXDiagnosticsLogger.LogError("RuntimeHostException", clsid, ex.HResult, control.Name, ex.Message);
             return null;
         }
     }

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Text;
 
@@ -21,7 +21,8 @@ public static class Vb6BinaryStructures
         uint lpProjInfoVa,
         uint lpSubMainVa = 0,
         uint dwLcid = 0x00000409,
-        ushort formCount = 1)
+        ushort formCount = 1,
+        ushort externalComponentCount = 0)
     {
         // 1. Firma mágica: "VB5!" (4 bytes: 0x56, 0x42, 0x35, 0x21)
         bw.Write(Pe32Constants.Vb5Magic);
@@ -65,7 +66,7 @@ public static class Vb6BinaryStructures
         bw.Write(formCount);
 
         // 14. wExternalComponentCount (2 bytes)
-        bw.Write((ushort)0);
+        bw.Write(externalComponentCount);
 
         // 15. dwThunkCount (4 bytes)
         bw.Write((uint)0);

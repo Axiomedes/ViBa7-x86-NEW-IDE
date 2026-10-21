@@ -1,4 +1,5 @@
-﻿using System;
+using System;
+using System.IO;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -10,10 +11,9 @@ using ViBa7.ProjectModel.Navigation;
 namespace ViBa7.IDE.Editor;
 
 /// <summary>
-/// Margen interactivo de marcadores (Bookmark Margin / Glyph Gutter) ubicado
-/// en el extremo izquierdo del editor de código.
-/// Sincronizado en tiempo real con el desplazamiento vertical (scroll) y redibujado
-/// dinámico de líneas visuales de AvalonEdit.
+/// Margen interactivo de puntos de interrupción, ejecución y marcadores (Glyph Margin / Gutter)
+/// ubicado en el extremo izquierdo absoluto del editor de código.
+/// Dibuja círculos rojos de Breakpoint, cintas de Bookmark y la flecha amarilla de instrucción activa en depuración.
 /// </summary>
 public class BookmarkMargin : AbstractMargin
 {
@@ -22,8 +22,40 @@ public class BookmarkMargin : AbstractMargin
 
     private static readonly Brush GutterBackground = new SolidColorBrush(Color.FromRgb(246, 246, 246));
     private static readonly Pen GutterSeparator = new Pen(new SolidColorBrush(Color.FromRgb(226, 226, 226)), 1);
+
+    // Marcadores (Bookmarks - Azul)
     private static readonly Brush BookmarkBrush = new SolidColorBrush(Color.FromRgb(0, 122, 204));
     private static readonly Pen BookmarkPen = new Pen(new SolidColorBrush(Color.FromRgb(0, 90, 160)), 1);
+
+    // Puntos de interrupción (Breakpoints - Rojo carmesí clásico)
+    private static readonly Brush BreakpointBrush = new SolidColorBrush(Color.FromRgb(208, 32, 32));
+    private static readonly Pen BreakpointPen = new Pen(new SolidColorBrush(Color.FromRgb(140, 16, 16)), 1.2);
+
+    // Flecha de ejecución activa (Amarillo dorado / Visual Studio pointer)
+    private static readonly Brush ExecutionArrowBrush = new SolidColorBrush(Color.FromRgb(255, 215, 0));
+    private static readonly Pen ExecutionArrowPen = new Pen(new SolidColorBrush(Color.FromRgb(154, 125, 10)), 1);
+
+    // Estado global de la instrucción en pausa del depurador
+    private static string? _activeExecutionFilePath;
+    private static int _activeExecutionLineNumber;
+    public static event Action? ExecutionPointerChanged;
+
+    public static void SetExecutionPointer(string? filePath, int lineNumber)
+    {
+        _activeExecutionFilePath = filePath;
+        _activeExecutionLineNumber = lineNumber;
+        ExecutionPointerChanged?.Invoke();
+    }
+
+    public static void ClearExecutionPointer()
+    {
+        _activeExecutionFilePath = null;
+        _activeExecutionLineNumber = 0;
+        ExecutionPointerChanged?.Invoke();
+    }
+
+    public static string? ActiveExecutionFilePath => _activeExecutionFilePath;
+    public static int ActiveExecutionLineNumber => _activeExecutionLineNumber;
 
     static BookmarkMargin()
     {
@@ -31,6 +63,10 @@ public class BookmarkMargin : AbstractMargin
         GutterSeparator.Freeze();
         BookmarkBrush.Freeze();
         BookmarkPen.Freeze();
+        BreakpointBrush.Freeze();
+        BreakpointPen.Freeze();
+        ExecutionArrowBrush.Freeze();
+        ExecutionArrowPen.Freeze();
     }
 
     public BookmarkMargin(TextEditor editor, string filePath)
@@ -39,12 +75,14 @@ public class BookmarkMargin : AbstractMargin
         _filePath = filePath ?? string.Empty;
 
         Cursor = Cursors.Hand;
-        ToolTip = "Clic para agregar o quitar marcador";
+        ToolTip = "Clic izquierdo para alternar Punto de Interrupción (F9).";
 
-        BookmarkManager.Instance.BookmarksChanged += OnBookmarksChanged;
+        BookmarkManager.Instance.BookmarksChanged += OnGutterChanged;
+        BreakpointManager.Instance.BreakpointsChanged += OnGutterChanged;
+        ExecutionPointerChanged += OnGutterChanged;
     }
 
-    private void OnBookmarksChanged()
+    private void OnGutterChanged()
     {
         Dispatcher.InvokeAsync(InvalidateVisual);
     }
@@ -72,12 +110,12 @@ public class BookmarkMargin : AbstractMargin
 
     protected override Size MeasureOverride(Size availableSize)
     {
-        return new Size(20, 0);
+        return new Size(22, 0);
     }
 
     protected override void OnRender(DrawingContext drawingContext)
     {
-        // 1. Fondo sutil del margen de marcadores (Gutter)
+        // 1. Fondo sutil del margen (Gutter)
         drawingContext.DrawRectangle(
             GutterBackground,
             null,
@@ -93,37 +131,85 @@ public class BookmarkMargin : AbstractMargin
         if (textView == null || !textView.VisualLinesValid)
             return;
 
-        var bookmarks = BookmarkManager.Instance.GetBookmarks(_filePath);
-        if (bookmarks.Count == 0)
+        bool hasAnyBookmarks = BookmarkManager.Instance.GetBookmarks(_filePath).Count > 0;
+        bool hasAnyBreakpoints = BreakpointManager.Instance.GetBreakpoints(_filePath).Count > 0;
+        bool isExecutionFile = !string.IsNullOrEmpty(_activeExecutionFilePath) &&
+                               (string.Equals(_filePath, _activeExecutionFilePath, StringComparison.OrdinalIgnoreCase) ||
+                                string.Equals(Path.GetFileName(_filePath), Path.GetFileName(_activeExecutionFilePath), StringComparison.OrdinalIgnoreCase));
+
+        if (!hasAnyBookmarks && !hasAnyBreakpoints && !isExecutionFile)
             return;
 
-        // 3. Dibujar marcadores alineados con cada línea visible y su desplazamiento vertical actual
+        // 3. Dibujar glifos alineados con cada línea visual
         foreach (var visualLine in textView.VisualLines)
         {
             int lineNumber = visualLine.FirstDocumentLine.LineNumber;
-            if (BookmarkManager.Instance.HasBookmark(_filePath, lineNumber))
-            {
-                double y = visualLine.VisualTop - textView.VerticalOffset;
-                double size = 12;
-                double x = Math.Round((RenderSize.Width - size) / 2.0);
-                double yOffset = Math.Round(y + (visualLine.Height - size) / 2.0);
+            double y = visualLine.VisualTop - textView.VerticalOffset;
+            double size = 12;
+            double x = Math.Round((RenderSize.Width - size) / 2.0);
+            double yOffset = Math.Round(y + (visualLine.Height - size) / 2.0);
 
-                // Dibujar forma de cinta de marcador (Bookmark ribbon badge)
-                var pathGeom = new PathGeometry();
-                var figure = new PathFigure
+            bool isBreakpoint = BreakpointManager.Instance.HasBreakpoint(_filePath, lineNumber);
+            bool isBookmark = BookmarkManager.Instance.HasBookmark(_filePath, lineNumber);
+            bool isExecutionLine = isExecutionFile && lineNumber == _activeExecutionLineNumber;
+
+            // A. Punto de Interrupción (Círculo rojo)
+            if (isBreakpoint)
+            {
+                drawingContext.DrawEllipse(
+                    BreakpointBrush,
+                    BreakpointPen,
+                    new Point(x + size / 2.0, yOffset + size / 2.0),
+                    size / 2.0,
+                    size / 2.0);
+            }
+
+            // B. Marcador (Cinta azul en esquina inferior derecha si coexiste con breakpoint, o central)
+            if (isBookmark)
+            {
+                if (!isBreakpoint)
                 {
-                    StartPoint = new Point(x, yOffset),
+                    var pathGeom = new PathGeometry();
+                    var figure = new PathFigure
+                    {
+                        StartPoint = new Point(x, yOffset),
+                        IsClosed = true,
+                        IsFilled = true
+                    };
+                    figure.Segments.Add(new LineSegment(new Point(x + size, yOffset), false));
+                    figure.Segments.Add(new LineSegment(new Point(x + size, yOffset + size), false));
+                    figure.Segments.Add(new LineSegment(new Point(x + size / 2.0, yOffset + size - 3), false));
+                    figure.Segments.Add(new LineSegment(new Point(x, yOffset + size), false));
+                    pathGeom.Figures.Add(figure);
+
+                    drawingContext.DrawGeometry(BookmarkBrush, BookmarkPen, pathGeom);
+                }
+                else
+                {
+                    // Mini insignia azul superpuesta
+                    drawingContext.DrawRectangle(BookmarkBrush, BookmarkPen, new Rect(x + size - 4, yOffset, 4, 6));
+                }
+            }
+
+            // C. Flecha de ejecución activa (Amarillo dorado con punta a la derecha)
+            if (isExecutionLine)
+            {
+                var arrowGeom = new PathGeometry();
+                var arrowFig = new PathFigure
+                {
+                    StartPoint = new Point(x - 2, yOffset + 2),
                     IsClosed = true,
                     IsFilled = true
                 };
+                arrowFig.Segments.Add(new LineSegment(new Point(x + 5, yOffset + 2), false));
+                arrowFig.Segments.Add(new LineSegment(new Point(x + 5, yOffset), false));
+                arrowFig.Segments.Add(new LineSegment(new Point(x + size + 3, yOffset + size / 2.0), false));
+                arrowFig.Segments.Add(new LineSegment(new Point(x + 5, yOffset + size), false));
+                arrowFig.Segments.Add(new LineSegment(new Point(x + 5, yOffset + size - 2), false));
+                arrowFig.Segments.Add(new LineSegment(new Point(x - 2, yOffset + size - 2), false));
+                arrowGeom.Figures.Add(arrowFig);
 
-                figure.Segments.Add(new LineSegment(new Point(x + size, yOffset), false));
-                figure.Segments.Add(new LineSegment(new Point(x + size, yOffset + size), false));
-                figure.Segments.Add(new LineSegment(new Point(x + size / 2.0, yOffset + size - 3), false));
-                figure.Segments.Add(new LineSegment(new Point(x, yOffset + size), false));
-                pathGeom.Figures.Add(figure);
-
-                drawingContext.DrawGeometry(BookmarkBrush, BookmarkPen, pathGeom);
+                drawingContext.DrawGeometry(ExecutionArrowBrush, ExecutionArrowPen, arrowGeom);
             }
         }
     }
@@ -139,7 +225,8 @@ public class BookmarkMargin : AbstractMargin
             if (visualLine != null)
             {
                 int lineNumber = visualLine.FirstDocumentLine.LineNumber;
-                BookmarkManager.Instance.ToggleBookmark(_filePath, lineNumber);
+                // Clic izquierdo en el margen alterna punto de interrupción (estándar VB6 / Visual Studio)
+                BreakpointManager.Instance.ToggleBreakpoint(_filePath, lineNumber);
                 e.Handled = true;
                 InvalidateVisual();
             }

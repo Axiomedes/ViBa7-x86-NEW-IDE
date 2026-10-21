@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Globalization;
 using System.IO;
 using System.Text.RegularExpressions;
@@ -209,6 +209,105 @@ public static class FrxResourceFile
     }
 
     /// <summary>
+    /// Lee un bloque binario arbitrario (stream de persistencia ActiveX IPersistStreamInit, PropertyBag binario o recurso)
+    /// desde un archivo .frx o .ctx en el desplazamiento especificado.
+    /// </summary>
+    public static byte[]? ReadRawBlock(string frxFilePath, int offset)
+    {
+        if (!File.Exists(frxFilePath))
+        {
+            return null;
+        }
+
+        try
+        {
+            byte[] allBytes = File.ReadAllBytes(frxFilePath);
+            return ReadRawBlock(allBytes, offset);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Lee un bloque binario arbitrario desde un arreglo de bytes .frx/.ctx en el desplazamiento indicado.
+    /// Soporta preámbulos OLE StdPicture (8 y 12 bytes) y bloques binarios de OCX prefijados con longitud de 4 bytes.
+    /// </summary>
+    public static byte[]? ReadRawBlock(byte[] frxData, int offset)
+    {
+        if (frxData == null || offset < 0 || offset >= frxData.Length)
+        {
+            return null;
+        }
+
+        // Primero intentar decodificación estructurada si es un recurso OLE StdPicture
+        int available = frxData.Length - offset;
+        if (available >= 8)
+        {
+            uint magic0 = BitConverter.ToUInt32(frxData, offset);
+            uint magic4 = available >= 12 ? BitConverter.ToUInt32(frxData, offset + 4) : 0;
+            if (magic0 == OlePictureSignature || magic4 == OlePictureSignature)
+            {
+                var picBytes = ReadResource(frxData, offset);
+                if (picBytes != null) return picBytes;
+            }
+        }
+
+        if (available < 4)
+        {
+            byte[] tail = new byte[available];
+            Buffer.BlockCopy(frxData, offset, tail, 0, available);
+            return tail;
+        }
+
+        // Bloque binario estándar de VB6: [Longitud 4 bytes little-endian][Payload...]
+        uint blockLength = BitConverter.ToUInt32(frxData, offset);
+        if (blockLength == 0)
+        {
+            return Array.Empty<byte>();
+        }
+
+        if (blockLength <= (uint)(available - 4))
+        {
+            byte[] payload = new byte[blockLength];
+            Buffer.BlockCopy(frxData, offset + 4, payload, 0, (int)blockLength);
+            return payload;
+        }
+
+        // Fallback: devolver bytes restantes desde offset
+        byte[] raw = new byte[available];
+        Buffer.BlockCopy(frxData, offset, raw, 0, available);
+        return raw;
+    }
+
+    /// <summary>
+    /// Agrega un bloque binario opaco (ej. estado IPersistStreamInit de un OCX) al archivo .frx/.ctx
+    /// precedido por su longitud de 4 bytes (formato canónico VB6) y retorna el desplazamiento en bytes.
+    /// </summary>
+    public static int AppendRawBlock(string frxFilePath, byte[] rawData)
+    {
+        ArgumentNullException.ThrowIfNull(rawData);
+
+        string? dir = Path.GetDirectoryName(frxFilePath);
+        if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+        {
+            Directory.CreateDirectory(dir);
+        }
+
+        using var stream = new FileStream(frxFilePath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read);
+        int offset = (int)stream.Length;
+        stream.Seek(offset, SeekOrigin.Begin);
+
+        using var writer = new BinaryWriter(stream);
+        writer.Write((uint)rawData.Length);
+        writer.Write(rawData);
+        writer.Flush();
+
+        return offset;
+    }
+
+    /// <summary>
     /// Agrega una imagen o recurso binario al archivo .frx correspondiente utilizando
     /// la estructura canónica de VB6 (0x0000746C + longitud + bytes) y retorna el desplazamiento en bytes.
     /// Si el archivo no existe, lo crea automáticamente.
@@ -240,24 +339,33 @@ public static class FrxResourceFile
     }
 
     /// <summary>
-    /// Sincroniza y asegura que todos los recursos gráficos presentes en memoria (PictureData)
-    /// se guarden en el archivo .frx correspondiente al formulario (.frm), asignando referencias
-    /// canónicas de VB6 ("Form1.frx":0000) a cada control.
+    /// Sincroniza y asegura que todos los recursos gráficos (PictureData, DownPictureData, DisabledPictureData, ToolboxBitmapData)
+    /// y blobs binarios de estado ActiveX (ActiveXStateBlob y BinaryProperties) presentes en memoria
+    /// se guarden en el archivo .frx (o .ctx para UserControls), preservando intactos los offsets originales existentes.
     /// </summary>
     public static void EnsureFrxResourcesSaved(Designers.FormDesignModel model, string frmFilePath)
     {
         if (model == null || string.IsNullOrWhiteSpace(frmFilePath)) return;
 
-        string frxPath = Path.ChangeExtension(Path.GetFullPath(frmFilePath), ".frx");
+        bool isCtl = model.IsUserControl || frmFilePath.EndsWith(".ctl", StringComparison.OrdinalIgnoreCase);
+        string binaryExt = isCtl ? ".ctx" : ".frx";
+        string frxPath = Path.ChangeExtension(Path.GetFullPath(frmFilePath), binaryExt);
         string frxFileName = Path.GetFileName(frxPath);
 
         bool hasFormPic = model.PictureData != null && model.PictureData.Length > 0;
+        bool hasToolboxBmp = model.ToolboxBitmapData != null && model.ToolboxBitmapData.Length > 0;
         var allControls = model.GetAllControls();
-        var controlsWithPictures = allControls
-            .Where(c => c.PictureData != null && c.PictureData.Length > 0)
-            .ToList();
 
-        if (!hasFormPic && controlsWithPictures.Count == 0)
+        bool hasAnyControlBinary = allControls.Any(c =>
+            (c.PictureData != null && c.PictureData.Length > 0) ||
+            (c.DownPictureData != null && c.DownPictureData.Length > 0) ||
+            (c.DisabledPictureData != null && c.DisabledPictureData.Length > 0) ||
+            (c.ActiveXStateBlob != null && c.ActiveXStateBlob.Length > 0) ||
+            c.BinaryProperties.Count > 0);
+
+        bool hasOriginalBytes = model.OriginalFrxBytes != null && model.OriginalFrxBytes.Length > 0;
+
+        if (!hasFormPic && !hasToolboxBmp && !hasAnyControlBinary && !hasOriginalBytes)
         {
             return;
         }
@@ -268,28 +376,112 @@ public static class FrxResourceFile
             Directory.CreateDirectory(dir);
         }
 
-        using var stream = new FileStream(frxPath, FileMode.Create, FileAccess.Write, FileShare.None);
-        using var writer = new BinaryWriter(stream);
+        using var ms = new MemoryStream();
+        if (hasOriginalBytes)
+        {
+            ms.Write(model.OriginalFrxBytes!, 0, model.OriginalFrxBytes!.Length);
+        }
+
+        using var writer = new BinaryWriter(ms);
+
+        string EnsurePictureWritten(string? currentRef, byte[] picData)
+        {
+            if (hasOriginalBytes &&
+                !string.IsNullOrWhiteSpace(currentRef) &&
+                ParseReference(currentRef, out _, out int existingOffset))
+            {
+                var existingPayload = ReadResource(model.OriginalFrxBytes!, existingOffset);
+                if (existingPayload != null && existingPayload.AsSpan().SequenceEqual(picData))
+                {
+                    return FormatReference(frxFileName, existingOffset);
+                }
+            }
+
+            int offset = (int)ms.Position;
+            writer.Write(OlePictureSignature);
+            writer.Write((uint)picData.Length);
+            writer.Write(picData);
+            return FormatReference(frxFileName, offset);
+        }
+
+        string EnsureRawBlobWritten(string? currentRef, byte[] blobData, bool forceRewrite)
+        {
+            if (!forceRewrite &&
+                hasOriginalBytes &&
+                !string.IsNullOrWhiteSpace(currentRef) &&
+                ParseReference(currentRef, out _, out int existingOffset))
+            {
+                var existingPayload = ReadRawBlock(model.OriginalFrxBytes!, existingOffset);
+                if (existingPayload != null && existingPayload.AsSpan().SequenceEqual(blobData))
+                {
+                    return FormatReference(frxFileName, existingOffset);
+                }
+            }
+
+            int offset = (int)ms.Position;
+            writer.Write((uint)blobData.Length);
+            writer.Write(blobData);
+            return FormatReference(frxFileName, offset);
+        }
 
         if (hasFormPic)
         {
-            int offset = (int)stream.Position;
-            writer.Write(OlePictureSignature);
-            writer.Write((uint)model.PictureData!.Length);
-            writer.Write(model.PictureData);
-            model.Picture = FormatReference(frxFileName, offset);
+            model.Picture = EnsurePictureWritten(model.Picture, model.PictureData!);
         }
 
-        foreach (var ctrl in controlsWithPictures)
+        if (hasToolboxBmp)
         {
-            int offset = (int)stream.Position;
-            writer.Write(OlePictureSignature);
-            writer.Write((uint)ctrl.PictureData!.Length);
-            writer.Write(ctrl.PictureData);
-            ctrl.Picture = FormatReference(frxFileName, offset);
+            model.ToolboxBitmap = EnsurePictureWritten(model.ToolboxBitmap, model.ToolboxBitmapData!);
+        }
+
+        foreach (var ctrl in allControls)
+        {
+            if (ctrl.PictureData != null && ctrl.PictureData.Length > 0)
+            {
+                ctrl.Picture = EnsurePictureWritten(ctrl.Picture, ctrl.PictureData);
+            }
+            if (ctrl.DownPictureData != null && ctrl.DownPictureData.Length > 0)
+            {
+                ctrl.DownPicture = EnsurePictureWritten(ctrl.DownPicture, ctrl.DownPictureData);
+            }
+            if (ctrl.DisabledPictureData != null && ctrl.DisabledPictureData.Length > 0)
+            {
+                ctrl.DisabledPicture = EnsurePictureWritten(ctrl.DisabledPicture, ctrl.DisabledPictureData);
+            }
+
+            // Persistir blob de estado de instancia ActiveX (IPersistStreamInit / IPersistStream)
+            if (ctrl.ActiveXStateBlob != null && ctrl.ActiveXStateBlob.Length > 0)
+            {
+                string statePropName = !string.IsNullOrWhiteSpace(ctrl.ActiveXStatePropertyName)
+                    ? ctrl.ActiveXStatePropertyName!
+                    : "Object.zyx";
+
+                string? existingRef = ctrl.GetCustomProperty(statePropName);
+                string newRef = EnsureRawBlobWritten(existingRef, ctrl.ActiveXStateBlob, ctrl.HasModifiedActiveXState);
+                ctrl.ActiveXStatePropertyName = statePropName;
+                ctrl.SetCustomProperty(statePropName, newRef);
+                ctrl.BinaryProperties[statePropName] = ctrl.ActiveXStateBlob;
+                ctrl.HasModifiedActiveXState = false;
+            }
+
+            // Persistir propiedades binarias individuales del PropertyBag o del .frm
+            foreach (var binKvp in ctrl.BinaryProperties)
+            {
+                if (string.Equals(binKvp.Key, ctrl.ActiveXStatePropertyName, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                string? existingPropVal = ctrl.GetCustomProperty(binKvp.Key);
+                string newRef = EnsureRawBlobWritten(existingPropVal, binKvp.Value, forceRewrite: false);
+                ctrl.SetCustomProperty(binKvp.Key, newRef);
+            }
         }
 
         writer.Flush();
+        byte[] finalFrxBytes = ms.ToArray();
+        File.WriteAllBytes(frxPath, finalFrxBytes);
+        model.OriginalFrxBytes = finalFrxBytes;
     }
 
     /// <summary>

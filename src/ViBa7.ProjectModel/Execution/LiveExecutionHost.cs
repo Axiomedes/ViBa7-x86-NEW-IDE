@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -12,7 +12,8 @@ public record LoadedProcedure(
     string? ContainerName,
     List<string> Parameters,
     List<string> BodyLines,
-    int StartLine
+    int StartLine,
+    string? SourceFilePath = null
 );
 
 /// <summary>
@@ -38,7 +39,7 @@ public class LiveExecutionHost
     /// <summary>
     /// Indexa los procedimientos de un archivo o código fuente para hacerlos ejecutables.
     /// </summary>
-    public void LoadSourceCode(string code, string? containerName = null)
+    public void LoadSourceCode(string code, string? containerName = null, string? sourceFilePath = null)
     {
         var blocks = Advanced.VB6BlockParser.ParseBlocks(code);
         string[] allLines = code.Replace("\r\n", "\n").Split('\n');
@@ -84,7 +85,8 @@ public class LiveExecutionHost
                     ContainerName: containerName,
                     Parameters: paramNames,
                     BodyLines: body,
-                    StartLine: block.StartLine
+                    StartLine: block.StartLine,
+                    SourceFilePath: sourceFilePath
                 );
 
                 string key = !string.IsNullOrEmpty(containerName)
@@ -214,10 +216,21 @@ public class LiveExecutionHost
                 }
             }
 
-            return _interpreter.ExecuteBlock(proc.BodyLines, containerName, proc.StartLine);
+            return _interpreter.ExecuteBlock(proc.BodyLines, proc.SourceFilePath ?? containerName, proc.StartLine + 1);
         }
         finally
         {
+            if (_context.CurrentFrame != null)
+            {
+                for (int i = 0; i < proc.Parameters.Count && i < args.Length; i++)
+                {
+                    string paramName = proc.Parameters[i];
+                    if (_context.CurrentFrame.LocalVariables.TryGetValue(paramName, out var updatedVal))
+                    {
+                        args[i] = updatedVal;
+                    }
+                }
+            }
             _context.PopFrame();
         }
     }

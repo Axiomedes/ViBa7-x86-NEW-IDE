@@ -308,6 +308,10 @@ public static class OcxTypeLibReader
                     if (string.IsNullOrEmpty(ctrl.EventsInterfaceName) || isDefault)
                     {
                         ctrl.EventsInterfaceName = implName;
+                        if (implAttr.guid != Guid.Empty)
+                        {
+                            ctrl.EventsInterfaceIid = implAttr.guid.ToString("B").ToUpperInvariant();
+                        }
                     }
                     ExtractMembersAndEvents(implInfo, implAttr, null, ctrl.Events, null, visitedEventInterfaces);
                 }
@@ -317,6 +321,10 @@ public static class OcxTypeLibReader
                     if (string.IsNullOrEmpty(ctrl.DefaultInterfaceName) || isDefault)
                     {
                         ctrl.DefaultInterfaceName = implName;
+                        if (implAttr.guid != Guid.Empty)
+                        {
+                            ctrl.DefaultInterfaceIid = implAttr.guid.ToString("B").ToUpperInvariant();
+                        }
                     }
                     ExtractMembersAndEvents(implInfo, implAttr, ctrl.Members, null, membersByName, visitedMemberInterfaces);
                 }
@@ -432,8 +440,13 @@ public static class OcxTypeLibReader
             {
                 FUNCDESC fd = Marshal.PtrToStructure<FUNCDESC>(pFuncDesc);
 
-                // Ignorar funciones restringidas u ocultas de bajo nivel IUnknown/IDispatch
+                // Ignorar funciones restringidas de bajo nivel IUnknown/IDispatch
                 if ((fd.wFuncFlags & (short)FUNCFLAGS.FUNCFLAG_FRESTRICTED) != 0) continue;
+
+                bool isHidden = (fd.wFuncFlags & (short)FUNCFLAGS.FUNCFLAG_FHIDDEN) != 0;
+                bool isNonBrowsable = (fd.wFuncFlags & (short)FUNCFLAGS.FUNCFLAG_FNONBROWSABLE) != 0;
+                bool isBindable = (fd.wFuncFlags & (short)FUNCFLAGS.FUNCFLAG_FBINDABLE) != 0;
+                bool isDefaultBind = (fd.wFuncFlags & (short)FUNCFLAGS.FUNCFLAG_FDEFAULTBIND) != 0 || fd.memid == 0;
 
                 // Obtener nombres de función y parámetros
                 string[] names = new string[Math.Max(1, fd.cParams + 1)];
@@ -500,6 +513,10 @@ public static class OcxTypeLibReader
                                 existing.ReturnType = resolvedType;
                             }
                         }
+                        if (isHidden) existing.IsHidden = true;
+                        if (isNonBrowsable) existing.IsBrowsable = false;
+                        if (isBindable) existing.IsBindable = true;
+                        if (isDefaultBind) existing.IsDefaultBind = true;
                         if (string.IsNullOrEmpty(existing.Description) && !string.IsNullOrEmpty(funcDoc))
                         {
                             existing.Description = funcDoc;
@@ -515,7 +532,11 @@ public static class OcxTypeLibReader
                             Description = funcDoc ?? string.Empty,
                             IsPropertyGet = isPropGet,
                             IsPropertyPut = isPropPut,
-                            DispId = fd.memid
+                            DispId = fd.memid,
+                            IsHidden = isHidden,
+                            IsBrowsable = !isNonBrowsable && !isHidden,
+                            IsBindable = isBindable,
+                            IsDefaultBind = isDefaultBind
                         };
 
                         ExtractParameters(tinfo, fd, names, member.Parameters, isPropPut);
@@ -545,6 +566,11 @@ public static class OcxTypeLibReader
                     VARDESC vd = Marshal.PtrToStructure<VARDESC>(pVarDesc);
                     if ((vd.wVarFlags & (short)VARFLAGS.VARFLAG_FRESTRICTED) != 0) continue;
 
+                    bool isHidden = (vd.wVarFlags & (short)VARFLAGS.VARFLAG_FHIDDEN) != 0;
+                    bool isNonBrowsable = (vd.wVarFlags & (short)VARFLAGS.VARFLAG_FNONBROWSABLE) != 0;
+                    bool isBindable = (vd.wVarFlags & (short)VARFLAGS.VARFLAG_FBINDABLE) != 0;
+                    bool isDefaultBind = (vd.wVarFlags & (short)VARFLAGS.VARFLAG_FDEFAULTBIND) != 0 || vd.memid == 0;
+
                     tinfo.GetDocumentation(vd.memid, out string propName, out string propDoc, out _, out _);
                     if (string.IsNullOrWhiteSpace(propName))
                     {
@@ -563,6 +589,10 @@ public static class OcxTypeLibReader
                     {
                         existingProp.IsPropertyGet = true;
                         if (!isReadOnly) existingProp.IsPropertyPut = true;
+                        if (isHidden) existingProp.IsHidden = true;
+                        if (isNonBrowsable) existingProp.IsBrowsable = false;
+                        if (isBindable) existingProp.IsBindable = true;
+                        if (isDefaultBind) existingProp.IsDefaultBind = true;
                         if ((string.IsNullOrEmpty(existingProp.ReturnType) || existingProp.ReturnType == "Void") &&
                             !string.IsNullOrEmpty(propType))
                         {
@@ -583,7 +613,11 @@ public static class OcxTypeLibReader
                             Description = propDoc ?? string.Empty,
                             IsPropertyGet = true,
                             IsPropertyPut = !isReadOnly,
-                            DispId = vd.memid
+                            DispId = vd.memid,
+                            IsHidden = isHidden,
+                            IsBrowsable = !isNonBrowsable && !isHidden,
+                            IsBindable = isBindable,
+                            IsDefaultBind = isDefaultBind
                         };
 
                         membersByName[propName] = member;
@@ -637,12 +671,15 @@ public static class OcxTypeLibReader
 
             string paramType = GetTypeNameFromElemDesc(tinfo, elem);
             bool isOptional = (elem.desc.paramdesc.wParamFlags & PARAMFLAG.PARAMFLAG_FOPT) != 0;
+            bool isByRef = (VarEnum)elem.tdesc.vt == VarEnum.VT_PTR ||
+                           (elem.desc.paramdesc.wParamFlags & PARAMFLAG.PARAMFLAG_FOUT) != 0;
 
             parameters.Add(new OcxParameterInfo
             {
                 Name = paramName,
                 Type = paramType,
-                IsOptional = isOptional
+                IsOptional = isOptional,
+                IsByRef = isByRef
             });
         }
     }

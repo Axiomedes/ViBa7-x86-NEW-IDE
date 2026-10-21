@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Threading;
+using ViBa7.ActiveXHost;
 using ViBa7.IDE.Designer;
 using ViBa7.ProjectModel.Designers;
 using ViBa7.ProjectModel.Execution;
@@ -12,7 +14,7 @@ namespace ViBa7.IDE.Execution;
 
 /// <summary>
 /// Ventana anfitriona para la ejecución interactiva en caliente (Hot-Run) de formularios VB6.
-/// Instancia controles WPF dinámicos, enlaza eventos en vivo con el motor de ejecución
+/// Instancia controles WPF dinámicos y ActiveXRuntimeHost (HwndHost), enlaza eventos en vivo con el motor de ejecución
 /// y mantiene sincronizada la interfaz visual con las sentencias del script.
 /// </summary>
 public partial class LiveFormWindow : Window
@@ -21,6 +23,7 @@ public partial class LiveFormWindow : Window
     private readonly LiveExecutionHost _host;
     private readonly LiveFormProxy _formProxy;
     private readonly List<DispatcherTimer> _activeTimers = new();
+    private readonly List<IDisposable> _disposableRuntimeHosts = new();
     private readonly Dictionary<string, DispatcherTimer> _controlTimers = new(StringComparer.OrdinalIgnoreCase);
     private readonly Func<string, FormDesignModel?>? _userControlResolver;
 
@@ -281,7 +284,13 @@ public partial class LiveFormWindow : Window
         // 1. Si es un UserControl registrado o resuelto, componerlo en vivo a partir de su definición .ctl
         if (_userControlResolver != null)
         {
-            var ucModel = _userControlResolver(ctrl.TypeName);
+            string shortName = ctrl.TypeName.Contains('.')
+                ? ctrl.TypeName.Substring(ctrl.TypeName.LastIndexOf('.') + 1)
+                : ctrl.TypeName;
+            string normTypeName = ctrl.TypeName.ToUpperInvariant();
+            var ucModel = _userControlResolver(ctrl.TypeName)
+                       ?? _userControlResolver(shortName)
+                       ?? _userControlResolver(normTypeName);
             if (ucModel != null)
             {
                 return CreateLiveUserControlVisual(ctrl, ucModel);
@@ -579,26 +588,100 @@ public partial class LiveFormWindow : Window
                 return null;
 
             default:
-                // Para controles OCX de terceros y otros controles gráficos (Shape, Image, etc.)
-                var genericVisual = ControlVisualRenderer.CreateVisual(ctrl);
+                // Para controles OCX ActiveX (alojados interactivamente en ActiveXRuntimeHost con UserMode = True) y otros controles gráficos
+                var genericVisual = ControlVisualRenderer.CreateRuntimeVisual(ctrl);
                 if (genericVisual != null)
                 {
+                    if (genericVisual is IDisposable dispHost)
+                    {
+                        _disposableRuntimeHosts.Add(dispHost);
+                    }
+                    else if (genericVisual is Grid containerGrid && containerGrid.Children.Count > 0 && containerGrid.Children[0] is IDisposable childDisp)
+                    {
+                        _disposableRuntimeHosts.Add(childDisp);
+                    }
+
+                    ActiveXRuntimeHost? axRtHost = genericVisual as ActiveXRuntimeHost
+                        ?? (genericVisual is Grid g && g.Children.Count > 0 ? g.Children[0] as ActiveXRuntimeHost : null);
+
+                    if (axRtHost != null)
+                    {
+                        axRtHost.RuntimeExtenderBoundsChanged += host =>
+                        {
+                            Dispatcher.Invoke(() =>
+                            {
+                                Canvas.SetLeft(genericVisual, host.AxControl.Extender.Left / FormDesignModel.TwipsPerPixel);
+                                Canvas.SetTop(genericVisual, host.AxControl.Extender.Top / FormDesignModel.TwipsPerPixel);
+                                genericVisual.Width = Math.Max(16, host.AxControl.Extender.Width / FormDesignModel.TwipsPerPixel);
+                                genericVisual.Height = Math.Max(16, host.AxControl.Extender.Height / FormDesignModel.TwipsPerPixel);
+                            });
+                        };
+
+                        // Fase 4: Enlazar eventos COM en vivo (IConnectionPoint / ActiveXEventSink)
+                        axRtHost.ComEventFired += invocation =>
+                        {
+                            Dispatcher.Invoke(() =>
+                            {
+                                try
+                                {
+                                    var procArgs = new VbValue[invocation.Arguments.Length];
+                                    for (int i = 0; i < invocation.Arguments.Length; i++)
+                                    {
+                                        var arg = invocation.Arguments[i];
+                                        if (arg.RawValue != null && Marshal.IsComObject(arg.RawValue))
+                                        {
+                                            procArgs[i] = LiveControlProxy.ConvertComResultToVbValue(arg.RawValue, $"Arg{i}", Dispatcher);
+                                        }
+                                        else
+                                        {
+                                            procArgs[i] = arg;
+                                        }
+                                    }
+
+                                    string procName = $"{ctrlName}_{invocation.EventName}";
+                                    _host.InvokeProcedure(procName, modName, procArgs);
+
+                                    if (!string.IsNullOrEmpty(parentControlPrefix))
+                                    {
+                                        _host.InvokeProcedure($"{parentControlPrefix}_{ctrlName}_{invocation.EventName}", _model.Name, procArgs);
+                                    }
+
+                                    // Propagar parámetros ByRef modificados de vuelta al OCX nativo
+                                    for (int i = 0; i < invocation.Arguments.Length; i++)
+                                    {
+                                        if (invocation.IsByRef[i])
+                                        {
+                                            invocation.UpdateArgumentValue(i, procArgs[i]);
+                                        }
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    _host.Context.WriteDebugPrint($"[Error al ejecutar {ctrlName}_{invocation.EventName}]: {ex.Message}");
+                                }
+                            });
+                        };
+                    }
+                    else
+                    {
+                        genericVisual.MouseLeftButtonDown += (s, e) =>
+                        {
+                            if (ctrl.Enabled)
+                            {
+                                if (e.ClickCount == 2)
+                                {
+                                    DispatchEvent("DblClick");
+                                }
+                                else
+                                {
+                                    DispatchEvent("Click");
+                                }
+                            }
+                        };
+                    }
+
                     genericVisual.IsEnabled = ctrl.Enabled;
                     genericVisual.Visibility = ctrl.Visible ? Visibility.Visible : Visibility.Hidden;
-                    genericVisual.MouseLeftButtonDown += (s, e) =>
-                    {
-                        if (ctrl.Enabled)
-                        {
-                            if (e.ClickCount == 2)
-                            {
-                                DispatchEvent("DblClick");
-                            }
-                            else
-                            {
-                                DispatchEvent("Click");
-                            }
-                        }
-                    };
                 }
                 return genericVisual;
         }
@@ -623,36 +706,98 @@ public partial class LiveFormWindow : Window
         };
         ucBorder.Child = ucCanvas;
 
-        // Disparar ciclo de vida inicial del UserControl
+        // Ambient y Extender específicos para esta instancia de UserControl
+        var ambient = new VbUserControlAmbient(isUserMode: true, displayName: ctrl.Name);
+        var extender = new VbUserControlExtender(ctrl);
+        _host.Context.SetVariable("Ambient", VbValue.FromObject(ambient));
+        _host.Context.SetVariable("Extender", VbValue.FromObject(extender));
+
+        // 1. Inicialización
+        _host.Context.ActiveControlInstanceName = ctrl.Name;
         _host.InvokeProcedure("UserControl_Initialize", ucModel.Name);
         _host.InvokeProcedure($"{ctrl.Name}_Initialize", _model.Name);
+
+        // 2. Persistencia PropertyBag: ReadProperties o InitProperties
+        if (ctrl.CustomProperties.Count > 0 || ctrl.BinaryProperties.Count > 0)
+        {
+            var propBag = new VbPropertyBagRuntime();
+            foreach (var cp in ctrl.CustomProperties)
+            {
+                propBag.SetPropertyDirect(cp.Name, VbValue.FromString(cp.Value));
+            }
+            foreach (var bp in ctrl.BinaryProperties)
+            {
+                propBag.SetPropertyDirect(bp.Key, VbValue.FromObject(bp.Value));
+            }
+            _host.Context.SetVariable("PropBag", VbValue.FromObject(propBag));
+            _host.InvokeProcedure("UserControl_ReadProperties", ucModel.Name, VbValue.FromObject(propBag));
+        }
+        else
+        {
+            _host.InvokeProcedure("UserControl_InitProperties", ucModel.Name);
+        }
+
+        // 3. Resize y Show inicial
         _host.InvokeProcedure("UserControl_Resize", ucModel.Name);
+        _host.InvokeProcedure("UserControl_Show", ucModel.Name);
+        _host.InvokeProcedure("UserControl_Paint", ucModel.Name);
 
         // Construir cada control constitutivo del UserControl dentro de su lienzo
-        foreach (var child in ucModel.Children)
+        if (ucModel.Children.Count == 0)
         {
-            if (child.TypeName.Equals("VB.Menu", StringComparison.OrdinalIgnoreCase)) continue;
-
-            var childVisual = CreateLiveControlVisual(child, ucModel.Name, ctrl.Name);
-            if (childVisual != null)
+            // UserControl sin controles constitutivos (dibujado por código, GDI o skins)
+            var genericVisual = ControlVisualRenderer.CreateRuntimeVisual(ctrl);
+            if (genericVisual != null)
             {
-                Canvas.SetLeft(childVisual, child.LeftPixels);
-                Canvas.SetTop(childVisual, child.TopPixels);
-                childVisual.Width = child.WidthPixels;
-                childVisual.Height = child.HeightPixels;
-                ucCanvas.Children.Add(childVisual);
+                genericVisual.IsHitTestVisible = false;
+                ucCanvas.Children.Add(genericVisual);
+            }
+        }
+        else
+        {
+            foreach (var child in ucModel.Children)
+            {
+                if (child.TypeName.Equals("VB.Menu", StringComparison.OrdinalIgnoreCase)) continue;
 
-                // Registrar proxy constitutivo accesible tanto como uc1_btn como btn
-                var childProxy = new LiveControlProxy(child, childVisual);
-                _formProxy.RegisterControl(childProxy);
-                _host.Context.SetVariable($"{ctrl.Name}_{child.Name}", VbValue.FromObject(childProxy));
-                _host.Context.SetVariable(child.Name, VbValue.FromObject(childProxy));
+                var childVisual = CreateLiveControlVisual(child, ucModel.Name, ctrl.Name);
+                if (childVisual != null)
+                {
+                    Canvas.SetLeft(childVisual, child.LeftPixels);
+                    Canvas.SetTop(childVisual, child.TopPixels);
+                    childVisual.Width = child.WidthPixels;
+                    childVisual.Height = child.HeightPixels;
+                    ucCanvas.Children.Add(childVisual);
+
+                    // Registrar proxy constitutivo accesible tanto como uc1_btn como btn
+                    var childProxy = new LiveControlProxy(child, childVisual);
+                    _formProxy.RegisterControl(childProxy);
+                    _host.Context.SetVariable($"{ctrl.Name}_{child.Name}", VbValue.FromObject(childProxy));
+                    _host.Context.SetVariable(child.Name, VbValue.FromObject(childProxy));
+                }
+            }
+        }
+
+        // Renderizar controles hijos alojados dentro de esta instancia si actúa como contenedor
+        if (ctrl.Children.Count > 0)
+        {
+            foreach (var hostedChild in ctrl.Children)
+            {
+                var hostedVisual = CreateLiveControlVisual(hostedChild);
+                if (hostedVisual != null)
+                {
+                    Canvas.SetLeft(hostedVisual, hostedChild.LeftPixels);
+                    Canvas.SetTop(hostedVisual, hostedChild.TopPixels);
+                    hostedVisual.Width = hostedChild.WidthPixels;
+                    hostedVisual.Height = hostedChild.HeightPixels;
+                    ucCanvas.Children.Add(hostedVisual);
+                }
             }
         }
 
         // Clic en el área del UserControl
         ucBorder.MouseDown += (s, e) =>
         {
+            _host.Context.ActiveControlInstanceName = ctrl.Name;
             _host.InvokeProcedure($"{ctrl.Name}_Click", _model.Name);
             _host.InvokeProcedure("UserControl_Click", ucModel.Name);
         };
@@ -662,12 +807,52 @@ public partial class LiveFormWindow : Window
 
     private void WireEvents()
     {
+        // Enlazar despachador global de RaiseEvent desde UserControls hacia el formulario
+        _host.Context.OnRaiseEvent += (eventName, eventArgs, containerName, activeInstanceName) =>
+        {
+            Dispatcher.Invoke(() =>
+            {
+                try
+                {
+                    string targetInstance = !string.IsNullOrEmpty(activeInstanceName)
+                        ? activeInstanceName
+                        : _model.GetAllControls().FirstOrDefault(c => c.TypeName.Equals(containerName, StringComparison.OrdinalIgnoreCase))?.Name ?? string.Empty;
+
+                    if (string.IsNullOrEmpty(targetInstance))
+                    {
+                        targetInstance = containerName ?? string.Empty;
+                    }
+
+                    var ctrl = _model.GetAllControls().Find(c => c.Name.Equals(targetInstance, StringComparison.OrdinalIgnoreCase));
+                    VbValue[] finalArgs;
+                    if (ctrl?.Index.HasValue == true)
+                    {
+                        finalArgs = new VbValue[eventArgs.Length + 1];
+                        finalArgs[0] = VbValue.FromLong(ctrl.Index.Value);
+                        Array.Copy(eventArgs, 0, finalArgs, 1, eventArgs.Length);
+                    }
+                    else
+                    {
+                        finalArgs = eventArgs;
+                    }
+
+                    string procName = $"{targetInstance}_{eventName}";
+                    _host.InvokeProcedure(procName, _model.Name, finalArgs);
+                }
+                catch (Exception ex)
+                {
+                    _host.Context.WriteDebugPrint($"[Error al despachar RaiseEvent {eventName}]: {ex.Message}");
+                }
+            });
+        };
+
         Loaded += (s, e) =>
         {
             if (_model.IsUserControl)
             {
                 _host.InvokeProcedure("UserControl_Initialize", _model.Name);
                 _host.InvokeProcedure("UserControl_Resize", _model.Name);
+                _host.InvokeProcedure("UserControl_Show", _model.Name);
                 _host.InvokeProcedure("UserControl_Paint", _model.Name);
             }
             else
@@ -704,10 +889,23 @@ public partial class LiveFormWindow : Window
         {
             if (_model.IsUserControl)
             {
+                _host.InvokeProcedure("UserControl_Hide", _model.Name);
                 _host.InvokeProcedure("UserControl_Terminate", _model.Name);
             }
             else
             {
+                foreach (var child in _model.GetAllControls())
+                {
+                    if (_userControlResolver != null)
+                    {
+                        var ucModel = _userControlResolver(child.TypeName);
+                        if (ucModel != null)
+                        {
+                            _host.InvokeProcedure("UserControl_Hide", ucModel.Name);
+                            _host.InvokeProcedure("UserControl_Terminate", ucModel.Name);
+                        }
+                    }
+                }
                 _host.InvokeProcedure("Form_Unload", _model.Name, VbValue.FromLong(0));
             }
         };
@@ -719,6 +917,12 @@ public partial class LiveFormWindow : Window
                 timer.Stop();
             }
             _activeTimers.Clear();
+
+            foreach (var disp in _disposableRuntimeHosts)
+            {
+                try { disp.Dispose(); } catch { }
+            }
+            _disposableRuntimeHosts.Clear();
 
             _host.Context.ActiveForms.Remove(_model.Name);
             _host.Context.State = ExecutionState.Stopped;

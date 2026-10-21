@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -85,6 +85,46 @@ public class FormDesignerControl
     public int? ScrollBars { get; set; }
     public FormFontDescription? Font { get; set; }
 
+    /// <summary>
+    /// Diccionario de fuentes con nombre para el control (ej: Font, IconFont, CaptionFont).
+    /// </summary>
+    public Dictionary<string, FormFontDescription> FontProperties { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Obtiene una fuente tipográfica por nombre de propiedad (ej: "Font", "IconFont").
+    /// </summary>
+    public FormFontDescription? GetFontProperty(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return null;
+        if (FontProperties.TryGetValue(name, out var font)) return font;
+        if (name.Equals("Font", StringComparison.OrdinalIgnoreCase)) return Font;
+        return null;
+    }
+
+    /// <summary>
+    /// Establece o actualiza una fuente tipográfica por nombre de propiedad.
+    /// </summary>
+    public void SetFontProperty(string name, FormFontDescription? font)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return;
+        if (font == null)
+        {
+            FontProperties.Remove(name);
+            if (name.Equals("Font", StringComparison.OrdinalIgnoreCase))
+            {
+                Font = null;
+            }
+        }
+        else
+        {
+            FontProperties[name] = font;
+            if (name.Equals("Font", StringComparison.OrdinalIgnoreCase))
+            {
+                Font = font;
+            }
+        }
+    }
+
     // Soporte de imágenes y alineación (PictureBox, CommandButton, etc.)
     public string? Picture { get; set; }
     public byte[]? PictureData { get; set; }
@@ -105,6 +145,31 @@ public class FormDesignerControl
 
     // Colección de todas las propiedades originales y no mapeadas (para round-trip sin pérdidas)
     public List<FormPropertyItem> CustomProperties { get; set; } = new();
+
+    /// <summary>
+    /// Propiedades binarias del control cargadas desde .frx / .ctx (indexadas por nombre de propiedad).
+    /// </summary>
+    public Dictionary<string, byte[]> BinaryProperties { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Estado binario opaco de persistencia OLE (IPersistStreamInit / IPersistStream / IPersistStorage) del control ActiveX.
+    /// </summary>
+    public byte[]? ActiveXStateBlob { get; set; }
+
+    /// <summary>
+    /// Nombre de la propiedad en el archivo .frm que referencia al ActiveXStateBlob en el .frx (por defecto "Object.zyx").
+    /// </summary>
+    public string? ActiveXStatePropertyName { get; set; }
+
+    /// <summary>
+    /// Indica si el estado binario ActiveX fue modificado en diseño (ej. mediante páginas de propiedades nativas) y debe reescribirse en el .frx.
+    /// </summary>
+    public bool HasModifiedActiveXState { get; set; }
+
+    /// <summary>
+    /// Clave de licencia COM en tiempo de ejecución obtenida vía IClassFactory2::RequestLicKey.
+    /// </summary>
+    public string? LicenseKey { get; set; }
 
     /// <summary>
     /// Indica si el control es un componente ActiveX / OCX no registrado o ausente en el sistema local,
@@ -364,11 +429,21 @@ public class FormDesignerControl
             DisabledPictureData = DisabledPictureData != null ? (byte[])DisabledPictureData.Clone() : null,
             ParentControl = newParent,
             CustomProperties = CustomProperties.Select(p => p.Clone()).ToList(),
+            BinaryProperties = BinaryProperties.ToDictionary(kv => kv.Key, kv => (byte[])kv.Value.Clone(), StringComparer.OrdinalIgnoreCase),
+            ActiveXStateBlob = ActiveXStateBlob != null ? (byte[])ActiveXStateBlob.Clone() : null,
+            ActiveXStatePropertyName = ActiveXStatePropertyName,
+            HasModifiedActiveXState = HasModifiedActiveXState,
+            LicenseKey = LicenseKey,
             IsUnresolved = IsUnresolved,
             UnresolvedErrorMessage = UnresolvedErrorMessage,
             RawControlLines = new List<string>(RawControlLines),
             _hasPropertyPages = _hasPropertyPages
         };
+
+        foreach (var kvp in FontProperties)
+        {
+            clone.FontProperties[kvp.Key] = kvp.Value.Clone();
+        }
 
         foreach (var child in Children)
         {

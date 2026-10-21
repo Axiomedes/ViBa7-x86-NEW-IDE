@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -17,6 +17,49 @@ public class VB6Project
     public string Startup { get; set; } = string.Empty;
     public string Title { get; set; } = string.Empty;
     public string ExeName32 { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Grupo de proyectos (.vbg) al que pertenece este proyecto, si aplica.
+    /// </summary>
+    public VB6ProjectGroup? ParentGroup { get; set; }
+
+    /// <summary>
+    /// Indica si este proyecto es el proyecto principal (proceso de inicio) dentro del grupo.
+    /// </summary>
+    public bool IsPrimaryProject => ParentGroup != null ? ParentGroup.IsPrimaryProject(this) : true;
+
+    /// <summary>
+    /// Indica si este proyecto es un proyecto secundario (subproceso / componente dependiente) dentro del grupo.
+    /// </summary>
+    public bool IsSecondaryProject => ParentGroup != null && ParentGroup.IsSecondaryProject(this);
+
+    /// <summary>
+    /// Rol clasificado del proyecto dentro de su grupo o de forma individual.
+    /// </summary>
+    public ProjectGroupRole GroupRole
+    {
+        get
+        {
+            if (ParentGroup == null) return ProjectGroupRole.Standalone;
+            return IsPrimaryProject ? ProjectGroupRole.Primary : ProjectGroupRole.Secondary;
+        }
+    }
+
+    /// <summary>
+    /// DescripciÃ³n textual en espaÃ±ol del rol del proyecto para visualizaciÃ³n en el IDE y barra de estado.
+    /// </summary>
+    public string RoleDescription
+    {
+        get
+        {
+            return GroupRole switch
+            {
+                ProjectGroupRole.Primary => "Proyecto Principal (Inicio / EjecuciÃ³n)",
+                ProjectGroupRole.Secondary => $"Proyecto Secundario (Subproceso / {ProjectType})",
+                _ => "Proyecto Individual"
+            };
+        }
+    }
 
     public List<ProjectItem> Items { get; } = [];
     public List<ProjectReference> References { get; } = [];
@@ -63,6 +106,34 @@ public class VB6Project
     {
         get => Settings.TryGetValue("LegalCopyright", out var v) ? v : string.Empty;
         set => Settings["LegalCopyright"] = value;
+    }
+
+    /// <summary>
+    /// Dialecto de lenguaje seleccionado para el proyecto (VB6 Clásico, VB7 Office, o ViBa7 Moderno).
+    /// Si no está presente en el .vbp, por defecto es VB6 Clásico Estándar (retrocompatibilidad total).
+    /// </summary>
+    public Execution.VbLanguageDialect Dialect
+    {
+        get
+        {
+            if (Settings.TryGetValue("LanguageDialect", out var v))
+            {
+                if (string.Equals(v, "Vb7Office", StringComparison.OrdinalIgnoreCase) || string.Equals(v, "VB7", StringComparison.OrdinalIgnoreCase))
+                    return Execution.VbLanguageDialect.Vb7Office;
+                if (string.Equals(v, "ViBaModern", StringComparison.OrdinalIgnoreCase) || string.Equals(v, "Modern", StringComparison.OrdinalIgnoreCase))
+                    return Execution.VbLanguageDialect.ViBaModern;
+            }
+            return Execution.VbLanguageDialect.Vb6Classic;
+        }
+        set
+        {
+            Settings["LanguageDialect"] = value switch
+            {
+                Execution.VbLanguageDialect.Vb7Office => "Vb7Office",
+                Execution.VbLanguageDialect.ViBaModern => "ViBaModern",
+                _ => "VB6"
+            };
+        }
     }
 
     public IEnumerable<ProjectItem> Forms => Items.FindAll(i => i.Type == ProjectItemType.Form);
@@ -114,7 +185,7 @@ public class VB6Project
     }
 
     /// <summary>
-    /// Elimina un control ActiveX del proyecto en memoria y de la lista de librerías cargadas.
+    /// Elimina un control ActiveX del proyecto en memoria y de la lista de librerÃ­as cargadas.
     /// </summary>
     public void RemoveActiveXControl(string libraryNameOrPathOrGuid)
     {
@@ -152,6 +223,58 @@ public class VB6Project
             string.Equals(i.AbsolutePath, guidOrPath, StringComparison.OrdinalIgnoreCase)));
     }
 
+    /// <summary>
+    /// Agrega una referencia COM / TypeLib al proyecto si no existe previamente.
+    /// </summary>
+    public void AddReference(ProjectReference reference)
+    {
+        ArgumentNullException.ThrowIfNull(reference);
+
+        string cleanGuid = reference.Guid.Trim('{', '}');
+        if (!References.Any(r => (!string.IsNullOrEmpty(r.Guid) && string.Equals(r.Guid.Trim('{', '}'), cleanGuid, StringComparison.OrdinalIgnoreCase)) ||
+                                 (!string.IsNullOrEmpty(r.FilePath) && string.Equals(r.FilePath, reference.FilePath, StringComparison.OrdinalIgnoreCase))))
+        {
+            if (string.IsNullOrEmpty(reference.RawLine))
+            {
+                string guidFormatted = reference.Guid;
+                if (!guidFormatted.StartsWith('{')) guidFormatted = "{" + guidFormatted + "}";
+                reference.RawLine = $"Reference=*\\G{guidFormatted}#{reference.MajorVersion}.{reference.MinorVersion}#{reference.Lcid}#{reference.FilePath}#{reference.Description}";
+            }
+
+            References.Add(reference);
+
+            Items.Add(new ProjectItem
+            {
+                Type = ProjectItemType.Reference,
+                Name = !string.IsNullOrWhiteSpace(reference.Description) ? reference.Description : Path.GetFileNameWithoutExtension(reference.FilePath),
+                RelativePath = reference.FilePath,
+                AbsolutePath = reference.FilePath,
+                RawLine = reference.RawLine,
+                Guid = reference.Guid,
+                MajorVersion = reference.MajorVersion,
+                MinorVersion = reference.MinorVersion,
+                FileExists = File.Exists(reference.FilePath),
+                ContainingProject = this
+            });
+        }
+    }
+
+    /// <summary>
+    /// Reemplaza la lista completa de referencias del proyecto manteniendo el orden de prioridad especificado.
+    /// </summary>
+    public void SetReferences(IEnumerable<ProjectReference> newReferences)
+    {
+        ArgumentNullException.ThrowIfNull(newReferences);
+
+        References.Clear();
+        Items.RemoveAll(i => i.Type == ProjectItemType.Reference);
+
+        foreach (var r in newReferences)
+        {
+            AddReference(r);
+        }
+    }
+
     private readonly Dictionary<string, FormDesignModel> _cachedUserControlModels = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
@@ -175,7 +298,7 @@ public class VB6Project
     }
 
     /// <summary>
-    /// Obtiene y parsea el modelo de diseño (FormDesignModel) de un UserControl del proyecto.
+    /// Obtiene y parsea el modelo de diseÃ±o (FormDesignModel) de un UserControl del proyecto.
     /// </summary>
     public FormDesignModel? GetUserControlDesignModel(string typeOrName)
     {
@@ -221,7 +344,7 @@ public class VB6Project
     }
 
     /// <summary>
-    /// Invalida la caché del modelo visual de un UserControl (por ejemplo cuando se guardan cambios en el editor).
+    /// Invalida la cachÃ© del modelo visual de un UserControl (por ejemplo cuando se guardan cambios en el editor).
     /// </summary>
     public void InvalidateUserControlCache(string? keyOrPath = null)
     {

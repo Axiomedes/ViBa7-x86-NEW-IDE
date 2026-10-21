@@ -1,4 +1,4 @@
-﻿namespace ViBa7.ProjectModel.IntelliSense;
+namespace ViBa7.ProjectModel.IntelliSense;
 
 /// <summary>
 /// Información de un parámetro para Parameter Info y Quick Info de VB6.
@@ -8,6 +8,7 @@ public class VbParameterInfo
     public string Name { get; init; } = string.Empty;
     public string Type { get; init; } = "Variant";
     public bool IsOptional { get; init; } = false;
+    public bool IsByRef { get; init; } = false;
     public string? DefaultValue { get; init; } = null;
     public bool IsParamArray { get; init; } = false;
     public string Description { get; init; } = string.Empty;

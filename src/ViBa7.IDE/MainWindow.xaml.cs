@@ -74,14 +74,14 @@ public partial class MainWindow : Window
 
     private void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
-        // Restaurar posición y tamaño de ventana
+        // Restaurar posiciÃ³n y tamaÃ±o de ventana
         if (_settings.WindowWidth > 200) Width = _settings.WindowWidth;
         if (_settings.WindowHeight > 200) Height = _settings.WindowHeight;
         if (_settings.WindowLeft >= 0) Left = _settings.WindowLeft;
         if (_settings.WindowTop >= 0) Top = _settings.WindowTop;
         if (_settings.IsMaximized) WindowState = WindowState.Maximized;
 
-        // Restaurar estado de paneles clásicos VB6
+        // Restaurar estado de paneles clÃ¡sicos VB6
         MenuToggleToolbox.IsChecked = _settings.ShowToolbox;
         ColToolbox.Width = _settings.ShowToolbox ? new GridLength(_settings.ToolboxWidth) : new GridLength(0);
 
@@ -95,7 +95,7 @@ public partial class MainWindow : Window
         MenuToggleOutput.IsChecked = _settings.ShowOutputPanel;
         SetOutputPanelVisibility(_settings.ShowOutputPanel);
 
-        // Inicializar integración de paneles de diseño visual
+        // Inicializar integraciÃ³n de paneles de diseÃ±o visual
         InitializeDesignerPanels();
 
         // Restaurar estado de Funciones Avanzadas VB7
@@ -123,7 +123,7 @@ public partial class MainWindow : Window
             if (item is EditorTabItem tab && tab.Document.IsDirty)
             {
                 var response = MessageBox.Show(
-                    $"¿Deseas guardar los cambios en '{tab.Document.DisplayName}' antes de salir?",
+                    $"Â¿Deseas guardar los cambios en '{tab.Document.DisplayName}' antes de salir?",
                     "Cambios pendientes",
                     MessageBoxButton.YesNoCancel,
                     MessageBoxImage.Question);
@@ -147,7 +147,7 @@ public partial class MainWindow : Window
             }
         }
 
-        // Guardar configuración de ventana y paneles
+        // Guardar configuraciÃ³n de ventana y paneles
         _settings.IsMaximized = WindowState == WindowState.Maximized;
         if (WindowState == WindowState.Normal)
         {
@@ -182,16 +182,16 @@ public partial class MainWindow : Window
         }
 
         _settings.Save();
-        AppLogger.Info("Configuración guardada.");
+        AppLogger.Info("ConfiguraciÃ³n guardada.");
     }
 
     private void UpdateRecentMenus()
     {
-        // Actualizar menú de proyectos recientes
+        // Actualizar menÃº de proyectos recientes
         MenuRecentProjects.Items.Clear();
         if (_settings.RecentProjects.Count == 0)
         {
-            MenuRecentProjects.Items.Add(new MenuItem { Header = "(Vacío)", IsEnabled = false });
+            MenuRecentProjects.Items.Add(new MenuItem { Header = "(VacÃ­o)", IsEnabled = false });
         }
         else
         {
@@ -203,11 +203,11 @@ public partial class MainWindow : Window
             }
         }
 
-        // Actualizar menú de archivos recientes
+        // Actualizar menÃº de archivos recientes
         MenuRecentFiles.Items.Clear();
         if (_settings.RecentFiles.Count == 0)
         {
-            MenuRecentFiles.Items.Add(new MenuItem { Header = "(Vacío)", IsEnabled = false });
+            MenuRecentFiles.Items.Add(new MenuItem { Header = "(VacÃ­o)", IsEnabled = false });
         }
         else
         {
@@ -250,12 +250,12 @@ public partial class MainWindow : Window
 
     private void InitializeDesignerPanels()
     {
-        // Resolver de modelos visuales para UserControls del proyecto actual
-        ControlVisualRenderer.UserControlModelResolver = (typeName) => _currentProject?.GetUserControlDesignModel(typeName);
-        FormDesignerControl.IsUserControlContainerResolver = (typeName) => _currentProject?.GetUserControlDesignModel(typeName)?.ControlContainer ?? false;
-        DesignerPropertyFactory.UserControlPropertiesResolver = (typeName) => _currentProject?.GetUserControlDesignModel(typeName)?.ExposedProperties;
+        // Resolver de modelos visuales para UserControls del proyecto actual o grupo (.vbg)
+        ControlVisualRenderer.UserControlModelResolver = (typeName) => _currentProjectGroup?.GetUserControlDesignModel(typeName) ?? _currentProject?.GetUserControlDesignModel(typeName);
+        FormDesignerControl.IsUserControlContainerResolver = (typeName) => (_currentProjectGroup?.GetUserControlDesignModel(typeName) ?? _currentProject?.GetUserControlDesignModel(typeName))?.ControlContainer ?? false;
+        DesignerPropertyFactory.UserControlPropertiesResolver = (typeName) => (_currentProjectGroup?.GetUserControlDesignModel(typeName) ?? _currentProject?.GetUserControlDesignModel(typeName))?.ExposedProperties;
 
-        // Enlazar eventos de Toolbox global al diseñador activo
+        // Enlazar eventos de Toolbox global al diseÃ±ador activo
         MainToolboxPanel.ToolSelected += typeName =>
         {
             if (ActiveTab?.DesignSurface != null && ActiveTab.IsDesignerActive)
@@ -308,7 +308,7 @@ public partial class MainWindow : Window
 
             MainPropertyGridPanel.BindModel(model, surface.SelectedControl, ActiveTab?.Document?.FilePath);
 
-            // Suscribir eventos del diseñador de esta pestaña
+            // Suscribir eventos del diseÃ±ador de esta pestaÃ±a
             surface.SelectionChanged += selList =>
             {
                 if (ActiveTab?.DesignSurface == surface)
@@ -356,6 +356,14 @@ public partial class MainWindow : Window
             MainPropertyGridPanel.ClearModel();
             MainToolboxPanel.ResetToPointer();
         }
+
+        // Sincronizar estado de habilitación de herramientas en la Caja de Herramientas
+        MainToolboxPanel.EnableAllTools();
+        if (ActiveTab?.Document?.FilePath?.EndsWith(".ctl", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            string activeUcName = Path.GetFileNameWithoutExtension(ActiveTab.Document.FilePath);
+            MainToolboxPanel.SetToolEnabled(activeUcName, false);
+        }
     }
 
     private void UpdateDocumentsVisibility()
@@ -382,7 +390,7 @@ public partial class MainWindow : Window
         {
             string fullPath = Path.GetFullPath(filePath);
 
-            // Evitar abrir duplicados para la misma ruta canónica
+            // Evitar abrir duplicados para la misma ruta canÃ³nica
             foreach (var item in DocumentsTabControl.Items)
             {
                 if (item is EditorTabItem openTab &&
@@ -434,7 +442,7 @@ public partial class MainWindow : Window
         if (tab.Document.IsDirty)
         {
             var response = MessageBox.Show(
-                $"¿Deseas guardar los cambios en '{tab.Document.DisplayName}' antes de cerrar?",
+                $"Â¿Deseas guardar los cambios en '{tab.Document.DisplayName}' antes de cerrar?",
                 "Cambios pendientes",
                 MessageBoxButton.YesNoCancel,
                 MessageBoxImage.Question);
@@ -478,7 +486,7 @@ public partial class MainWindow : Window
         {
             if (!CloseTab(tab))
             {
-                return false; // El usuario canceló
+                return false; // El usuario cancelÃ³
             }
         }
         return true;
@@ -490,6 +498,10 @@ public partial class MainWindow : Window
 
         _currentProject = null;
         _currentProjectGroup = null;
+
+        if (MenuSaveProjectGroup != null) MenuSaveProjectGroup.Visibility = Visibility.Collapsed;
+        if (MenuSetStartupProject != null) MenuSetStartupProject.Visibility = Visibility.Collapsed;
+        if (SepGroupOptions != null) SepGroupOptions.Visibility = Visibility.Collapsed;
 
         ProjectTreeView.Items.Clear();
 
@@ -523,22 +535,24 @@ public partial class MainWindow : Window
         {
             var group = VbgParser.Parse(vbgFilePath);
             _currentProjectGroup = group;
-            _currentProject = group.StartupProject ?? group.Projects.FirstOrDefault();
+            _currentProject = group.PrimaryProject ?? group.Projects.FirstOrDefault();
 
             foreach (var p in group.Projects)
             {
                 LoadProjectActiveXComponents(p);
             }
+            ControlToolboxRegistry.RegisterUserControlTools(group);
+            MainToolboxPanel.ReloadTools();
 
-            if (_currentProject != null)
-            {
-                ControlToolboxRegistry.RegisterUserControlTools(_currentProject);
-                MainToolboxPanel.ReloadTools();
-            }
+            if (MenuSaveProjectGroup != null) MenuSaveProjectGroup.Visibility = Visibility.Visible;
+            if (MenuSetStartupProject != null) MenuSetStartupProject.Visibility = Visibility.Visible;
+            if (SepGroupOptions != null) SepGroupOptions.Visibility = Visibility.Visible;
 
             RefreshProjectTree();
-            SetStatusMessage($"Grupo de proyectos '{group.Name}' cargado con {group.Projects.Count} proyectos.");
-            Title = $"{AppVersion.AppTitle} v{AppVersion.VersionString} - [Grupo] {group.Name} ({Path.GetFileName(group.GroupFilePath)})";
+            string primaryName = group.PrimaryProject?.Name ?? "Sin definir";
+            int secCount = group.SecondaryProjects.Count;
+            SetStatusMessage($"Grupo de proyectos '{group.Name}' cargado: Principal '{primaryName}' (Inicio), {secCount} secundario(s) (subprocesos).");
+            Title = $"{AppVersion.AppTitle} v{AppVersion.VersionString} - [Grupo: {group.Name}] Principal: {primaryName} ({Path.GetFileName(group.GroupFilePath)})";
 
             _settings.AddRecentProject(group.GroupFilePath);
             UpdateRecentMenus();
@@ -559,6 +573,10 @@ public partial class MainWindow : Window
             var project = VbpParser.Parse(vbpFilePath);
             _currentProject = project;
             _currentProjectGroup = null;
+
+            if (MenuSaveProjectGroup != null) MenuSaveProjectGroup.Visibility = Visibility.Collapsed;
+            if (MenuSetStartupProject != null) MenuSetStartupProject.Visibility = Visibility.Collapsed;
+            if (SepGroupOptions != null) SepGroupOptions.Visibility = Visibility.Collapsed;
 
             LoadProjectActiveXComponents(project);
             ControlToolboxRegistry.RegisterUserControlTools(project);
@@ -589,14 +607,23 @@ public partial class MainWindow : Window
             ProjectTreeView.Items.Clear();
             var groupRoot = new TreeViewItem
             {
-                Header = $"💼 Grupo de Proyectos: {_currentProjectGroup.Name} ({Path.GetFileName(_currentProjectGroup.GroupFilePath)})",
+                Header = $"?? Grupo de Proyectos: {_currentProjectGroup.Name} ({Path.GetFileName(_currentProjectGroup.GroupFilePath)})",
                 IsExpanded = true,
                 FontWeight = FontWeights.Bold
             };
 
+            var groupMenu = new ContextMenu();
+            var mnuSaveGroup = new MenuItem
+            {
+                Header = "Guardar grupo de proyectos (.vbg)"
+            };
+            mnuSaveGroup.Click += (s, e) => MenuSaveProjectGroup_Click(s, e);
+            groupMenu.Items.Add(mnuSaveGroup);
+            groupRoot.ContextMenu = groupMenu;
+
             foreach (var project in _currentProjectGroup.Projects)
             {
-                bool isStartup = project == _currentProjectGroup.StartupProject;
+                bool isStartup = _currentProjectGroup.IsPrimaryProject(project);
                 var prjNode = CreateProjectNode(project, isStartup, filter, _settings.ProjectExplorerMode);
                 if (prjNode != null)
                 {
@@ -612,7 +639,7 @@ public partial class MainWindow : Window
             {
                 ProjectTreeView.Items.Add(new TreeViewItem
                 {
-                    Header = "No se encontraron coincidencias para la búsqueda",
+                    Header = "No se encontraron coincidencias para la bÃºsqueda",
                     Foreground = Brushes.Gray,
                     FontStyle = FontStyles.Italic
                 });
@@ -630,7 +657,7 @@ public partial class MainWindow : Window
             {
                 ProjectTreeView.Items.Add(new TreeViewItem
                 {
-                    Header = "No se encontraron coincidencias para la búsqueda",
+                    Header = "No se encontraron coincidencias para la bÃºsqueda",
                     Foreground = Brushes.Gray,
                     FontStyle = FontStyles.Italic
                 });
@@ -641,7 +668,7 @@ public partial class MainWindow : Window
             ProjectTreeView.Items.Clear();
             ProjectTreeView.Items.Add(new TreeViewItem
             {
-                Header = "Ningún proyecto abierto",
+                Header = "NingÃºn proyecto abierto",
                 IsSelected = true,
                 Foreground = Brushes.Gray,
                 FontStyle = FontStyles.Italic
@@ -654,16 +681,81 @@ public partial class MainWindow : Window
     private TreeViewItem? CreateProjectNode(VB6Project project, bool isStartup, string filter, ProjectExplorerMode mode)
     {
         bool hasFilter = !string.IsNullOrEmpty(filter);
-        string title = isStartup
-            ? $"📁 {project.Name} ({Path.GetFileName(project.ProjectFilePath)}) [Inicio]"
-            : $"📁 {project.Name} ({Path.GetFileName(project.ProjectFilePath)})";
+        string fileName = Path.GetFileName(project.ProjectFilePath);
+        string title;
+        string toolTipText;
+
+        if (_currentProjectGroup != null)
+        {
+            if (isStartup)
+            {
+                title = $"?? [Principal] {project.Name} ({fileName}) [Inicio / Proceso]";
+                toolTipText = $"Proyecto Principal (Inicio de ejecuciÃ³n)\nArchivo: {project.ProjectFilePath}\nTipo: {project.ProjectType}\nSe ejecuta como proceso principal del grupo.";
+            }
+            else
+            {
+                title = $"?? [Secundario] {project.Name} ({fileName}) [Subproceso - {project.ProjectType}]";
+                toolTipText = $"Proyecto Secundario (Subproceso)\nArchivo: {project.ProjectFilePath}\nTipo: {project.ProjectType}\nSe ejecuta como subproceso / componente dependiente del proyecto principal.";
+            }
+        }
+        else
+        {
+            title = $"?? {project.Name} ({fileName})";
+            toolTipText = $"Proyecto: {project.Name}\nArchivo: {project.ProjectFilePath}\nTipo: {project.ProjectType}";
+        }
 
         var rootItem = new TreeViewItem
         {
             Header = title,
             IsExpanded = true,
-            FontWeight = isStartup ? FontWeights.Bold : FontWeights.SemiBold
+            FontWeight = isStartup ? FontWeights.Bold : FontWeights.SemiBold,
+            ToolTip = toolTipText,
+            Tag = project
         };
+
+        var contextMenu = new ContextMenu();
+        if (_currentProjectGroup != null)
+        {
+            var mnuSetStartup = new MenuItem
+            {
+                Header = isStartup ? "? Proyecto Principal (Inicio)" : "Establecer como proyecto principal (Inicio)",
+                IsEnabled = !isStartup,
+                FontWeight = isStartup ? FontWeights.Bold : FontWeights.Normal
+            };
+            mnuSetStartup.Click += (s, e) =>
+            {
+                _currentProjectGroup.SetPrimaryProject(project);
+                _currentProject = project;
+                RefreshProjectTree();
+                UpdateMakeExeMenuState();
+                SetStatusMessage($"'{project.Name}' establecido como Proyecto Principal (Inicio).");
+            };
+            contextMenu.Items.Add(mnuSetStartup);
+            contextMenu.Items.Add(new Separator());
+        }
+
+        var mnuExplore = new MenuItem
+        {
+            Header = "Abrir carpeta en el explorador"
+        };
+        mnuExplore.Click += (s, e) =>
+        {
+            string dir = project.ProjectDirectory;
+            if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir))
+            {
+                try
+                {
+                    Process.Start(new ProcessStartInfo
+                    {
+                        FileName = dir,
+                        UseShellExecute = true
+                    });
+                }
+                catch { }
+            }
+        };
+        contextMenu.Items.Add(mnuExplore);
+        rootItem.ContextMenu = contextMenu;
 
         int totalMatches = 0;
 
@@ -697,10 +789,10 @@ public partial class MainWindow : Window
             }
         }
 
-        AddCategory("🗔 Formularios", project.Forms);
-        AddCategory("📜 Módulos", project.Modules);
-        AddCategory("🧩 Módulos de Clase", project.Classes);
-        AddCategory("🎛️ Controles de Usuario", project.UserControls);
+        AddCategory("?? Formularios", project.Forms);
+        AddCategory("?? MÃ³dulos", project.Modules);
+        AddCategory("?? MÃ³dulos de Clase", project.Classes);
+        AddCategory("??? Controles de Usuario", project.UserControls);
 
         // Referencias
         if (project.References.Any())
@@ -713,7 +805,7 @@ public partial class MainWindow : Window
             {
                 var refFolder = new TreeViewItem
                 {
-                    Header = $"🔗 Referencias ({project.References.Count})",
+                    Header = $"?? Referencias ({project.References.Count})",
                     IsExpanded = false,
                     FontWeight = FontWeights.Normal
                 };
@@ -722,7 +814,7 @@ public partial class MainWindow : Window
                 {
                     refFolder.Items.Add(new TreeViewItem
                     {
-                        Header = $"• {r.DisplayTitle}",
+                        Header = $"â€¢ {r.DisplayTitle}",
                         Foreground = Brushes.Gray,
                         FontWeight = FontWeights.Normal
                     });
@@ -762,14 +854,14 @@ public partial class MainWindow : Window
 
         node.ToolTip = item.AbsolutePath;
 
-        // Si estamos en modo Avanzado y es un archivo de código editable, parsear miembros
+        // Si estamos en modo Avanzado y es un archivo de cÃ³digo editable, parsear miembros
         if (mode == ProjectExplorerMode.Advanced && item.IsEditable)
         {
             List<CodeMemberSymbol> members = [];
             try
             {
                 string text = "";
-                // Si está abierto en un tab, usar el texto en vivo
+                // Si estÃ¡ abierto en un tab, usar el texto en vivo
                 foreach (var tabObj in DocumentsTabControl.Items)
                 {
                     if (tabObj is EditorTabItem openTab &&
@@ -807,7 +899,7 @@ public partial class MainWindow : Window
                         Header = member.DisplayText,
                         Tag = member,
                         FontWeight = FontWeights.Normal,
-                        ToolTip = $"{member.DisplayText}\nLínea {member.LineNumber}\n{member.SourceFilePath}"
+                        ToolTip = $"{member.DisplayText}\nLÃ­nea {member.LineNumber}\n{member.SourceFilePath}"
                     };
                     node.Items.Add(memberNode);
                 }
@@ -869,15 +961,40 @@ public partial class MainWindow : Window
         }
     }
 
+    private void ProjectTreeView_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
+    {
+        if (e.NewValue is TreeViewItem item)
+        {
+            if (item.Tag is VB6Project prj)
+            {
+                _currentProject = prj;
+                UpdateMakeExeMenuState();
+                if (_currentProjectGroup != null)
+                {
+                    SetStatusMessage($"{prj.RoleDescription}: '{prj.Name}' ({Path.GetFileName(prj.ProjectFilePath)})");
+                }
+                else
+                {
+                    SetStatusMessage($"Proyecto: '{prj.Name}'");
+                }
+            }
+            else if (item.Tag is ProjectItem pItem && pItem.ContainingProject != null)
+            {
+                _currentProject = pItem.ContainingProject;
+                UpdateMakeExeMenuState();
+            }
+        }
+    }
+
     private void UpdateExplorerModeUI()
     {
         bool isAdvanced = _settings.ProjectExplorerMode == ProjectExplorerMode.Advanced;
         MenuExplorerMode.IsChecked = isAdvanced;
-        MenuExplorerMode.Header = isAdvanced ? "Modo de Explorador: _Avanzado (activo)" : "Modo de Explorador: _Estándar (activo)";
+        MenuExplorerMode.Header = isAdvanced ? "Modo de Explorador: _Avanzado (activo)" : "Modo de Explorador: _EstÃ¡ndar (activo)";
         BtnToggleExplorerMode.Opacity = isAdvanced ? 1.0 : 0.6;
         BtnToggleExplorerMode.ToolTip = isAdvanced
-            ? "Modo de Explorador: Avanzado (clic para cambiar a Estándar)"
-            : "Modo de Explorador: Estándar (clic para cambiar a Avanzado)";
+            ? "Modo de Explorador: Avanzado (clic para cambiar a EstÃ¡ndar)"
+            : "Modo de Explorador: EstÃ¡ndar (clic para cambiar a Avanzado)";
     }
 
     private void BtnToggleExplorerMode_Click(object sender, RoutedEventArgs e)
@@ -888,7 +1005,7 @@ public partial class MainWindow : Window
         _settings.Save();
         UpdateExplorerModeUI();
         RefreshProjectTree();
-        SetStatusMessage($"Modo de Explorador cambiado a: {(_settings.ProjectExplorerMode == ProjectExplorerMode.Advanced ? "Avanzado" : "Estándar")}.");
+        SetStatusMessage($"Modo de Explorador cambiado a: {(_settings.ProjectExplorerMode == ProjectExplorerMode.Advanced ? "Avanzado" : "EstÃ¡ndar")}.");
     }
 
     private void MenuExplorerMode_Click(object sender, RoutedEventArgs e)
@@ -914,55 +1031,125 @@ public partial class MainWindow : Window
     {
         try
         {
-            var saveDlg = new SaveFileDialog
+            var dlg = new Dialogs.NewProjectDialog();
+            dlg.Owner = this;
+            if (dlg.ShowDialog() != true) return;
+
+            string projectDir = dlg.ProjectLocation;
+            string projectName = dlg.ProjectName;
+            string vbpPath = dlg.ProjectFilePath;
+            var dialect = dlg.SelectedDialect;
+            var projType = dlg.SelectedProjectType;
+
+            if (!Directory.Exists(projectDir))
             {
-                Title = "Crear Nuevo Proyecto ViBa7 (Compatibilidad con VB6)",
-                Filter = "Proyecto ViBa7 (Compatibilidad con VB6) (*.vbp)|*.vbp",
-                FileName = "Proyecto1.vbp",
-                DefaultExt = ".vbp"
+                Directory.CreateDirectory(projectDir);
+            }
+
+            string startupObject = "Form1";
+            string initialItemPath = Path.Combine(projectDir, "Form1.frm");
+            string itemEntry = "Form=Form1.frm";
+            string typeStr = "Exe";
+
+            if (projType == Dialogs.NewProjectType.ActiveXControl)
+            {
+                typeStr = "Control";
+                startupObject = "(None)";
+                initialItemPath = Path.Combine(projectDir, "UserControl1.ctl");
+                itemEntry = "UserControl=UserControl1.ctl";
+
+                string ctlContent =
+                    "VERSION 5.00\r\n" +
+                    "Begin VB.UserControl UserControl1 \r\n" +
+                    "   ClientHeight    =   3600\r\n" +
+                    "   ClientLeft      =   0\r\n" +
+                    "   ClientTop       =   0\r\n" +
+                    "   ClientWidth     =   4800\r\n" +
+                    "   ScaleHeight     =   3600\r\n" +
+                    "   ScaleWidth      =   4800\r\n" +
+                    "End\r\n" +
+                    "Attribute VB_Name = \"UserControl1\"\r\n" +
+                    "Attribute VB_GlobalNameSpace = False\r\n" +
+                    "Attribute VB_Creatable = True\r\n" +
+                    "Attribute VB_PredeclaredId = False\r\n" +
+                    "Attribute VB_Exposed = True\r\n" +
+                    "\r\n" +
+                    "Private Sub UserControl_Initialize()\r\n" +
+                    "    \r\n" +
+                    "End Sub\r\n";
+                File.WriteAllText(initialItemPath, ctlContent, Encoding.GetEncoding(1252));
+            }
+            else if (projType == Dialogs.NewProjectType.ActiveXDll)
+            {
+                typeStr = "OleDll";
+                startupObject = "(None)";
+                initialItemPath = Path.Combine(projectDir, "Class1.cls");
+                itemEntry = "Class=Class1; Class1.cls";
+
+                string clsContent =
+                    "VERSION 1.0 CLASS\r\n" +
+                    "BEGIN\r\n" +
+                    "  MultiUse = -1  'True\r\n" +
+                    "  Persistable = 0  'NotPersistable\r\n" +
+                    "  DataBindingBehavior = 0  'vbNone\r\n" +
+                    "  DataSourceBehavior  = 0  'vbNone\r\n" +
+                    "  MTSTransactionMode  = 0  'NotAnMTSObject\r\n" +
+                    "END\r\n" +
+                    "Attribute VB_Name = \"Class1\"\r\n" +
+                    "Attribute VB_GlobalNameSpace = False\r\n" +
+                    "Attribute VB_Creatable = True\r\n" +
+                    "Attribute VB_PredeclaredId = False\r\n" +
+                    "Attribute VB_Exposed = True\r\n" +
+                    "Option Explicit\r\n" +
+                    "\r\n" +
+                    "Private Sub Class_Initialize()\r\n" +
+                    "    \r\n" +
+                    "End Sub\r\n";
+                File.WriteAllText(initialItemPath, clsContent, Encoding.GetEncoding(1252));
+            }
+            else
+            {
+                // Standard EXE
+                string formContent =
+                    "VERSION 5.00\r\n" +
+                    "Begin VB.Form Form1 \r\n" +
+                    "   Caption         =   \"Form1\"\r\n" +
+                    "   ClientHeight    =   4500\r\n" +
+                    "   ClientLeft      =   60\r\n" +
+                    "   ClientTop       =   450\r\n" +
+                    "   ClientWidth     =   6800\r\n" +
+                    "   LinkTopic       =   \"Form1\"\r\n" +
+                    "   ScaleHeight     =   4500\r\n" +
+                    "   ScaleWidth      =   6800\r\n" +
+                    "   StartUpPosition =   3  'Windows Default\r\n" +
+                    "End\r\n" +
+                    "Attribute VB_Name = \"Form1\"\r\n" +
+                    "Attribute VB_GlobalNameSpace = False\r\n" +
+                    "Attribute VB_Creatable = False\r\n" +
+                    "Attribute VB_PredeclaredId = True\r\n" +
+                    "Attribute VB_Exposed = False\r\n" +
+                    "\r\n" +
+                    "Private Sub Form_Load()\r\n" +
+                    "    \r\n" +
+                    "End Sub\r\n";
+                File.WriteAllText(initialItemPath, formContent, Encoding.GetEncoding(1252));
+            }
+
+            string dialectStr = dialect switch
+            {
+                VbLanguageDialect.Vb7Office => "Vb7Office",
+                VbLanguageDialect.ViBaModern => "ViBaModern",
+                _ => "VB6"
             };
 
-            if (saveDlg.ShowDialog() != true) return;
-
-            string vbpPath = saveDlg.FileName;
-            string projectDir = Path.GetDirectoryName(vbpPath) ?? AppDomain.CurrentDomain.BaseDirectory;
-            string projectName = Path.GetFileNameWithoutExtension(vbpPath);
-            string form1Path = Path.Combine(projectDir, "Form1.frm");
-
-            // 1. Crear Form1.frm estándar de VB6
-            string formContent =
-                "VERSION 5.00\r\n" +
-                "Begin VB.Form Form1 \r\n" +
-                "   Caption         =   \"Form1\"\r\n" +
-                "   ClientHeight    =   4500\r\n" +
-                "   ClientLeft      =   60\r\n" +
-                "   ClientTop       =   450\r\n" +
-                "   ClientWidth     =   6800\r\n" +
-                "   LinkTopic       =   \"Form1\"\r\n" +
-                "   ScaleHeight     =   4500\r\n" +
-                "   ScaleWidth      =   6800\r\n" +
-                "   StartUpPosition =   3  'Windows Default\r\n" +
-                "End\r\n" +
-                "Attribute VB_Name = \"Form1\"\r\n" +
-                "Attribute VB_GlobalNameSpace = False\r\n" +
-                "Attribute VB_Creatable = False\r\n" +
-                "Attribute VB_PredeclaredId = True\r\n" +
-                "Attribute VB_Exposed = False\r\n" +
-                "\r\n" +
-                "Private Sub Form_Load()\r\n" +
-                "    \r\n" +
-                "End Sub\r\n";
-
-            File.WriteAllText(form1Path, formContent, Encoding.GetEncoding(1252));
-
-            // 2. Crear Proyecto.vbp estándar de VB6
             string vbpContent =
-                "Type=Exe\r\n" +
-                "Form=Form1.frm\r\n" +
-                "Startup=\"Form1\"\r\n" +
+                $"Type={typeStr}\r\n" +
+                $"{itemEntry}\r\n" +
+                $"Startup=\"{startupObject}\"\r\n" +
                 $"Name=\"{projectName}\"\r\n" +
                 $"Title=\"{projectName}\"\r\n" +
                 $"ExeName32=\"{projectName}.exe\"\r\n" +
+                $"LanguageDialect=\"{dialectStr}\"\r\n" +
                 "Command32=\"\"\r\n" +
                 "CompatibleMode=\"0\"\r\n" +
                 "MajorVer=1\r\n" +
@@ -988,10 +1175,9 @@ public partial class MainWindow : Window
 
             File.WriteAllText(vbpPath, vbpContent, Encoding.GetEncoding(1252));
 
-            // 3. Cargar el proyecto y abrir Form1.frm
             LoadProject(vbpPath);
-            OpenFile(form1Path);
-            SetStatusMessage($"Nuevo proyecto creado: {projectName} ({vbpPath})");
+            OpenFile(initialItemPath);
+            SetStatusMessage($"Nuevo proyecto creado: {projectName} [{dialect}] ({vbpPath})");
         }
         catch (Exception ex)
         {
@@ -1117,7 +1303,7 @@ public partial class MainWindow : Window
         {
             if (_currentProject == null)
             {
-                MessageBox.Show("Debes tener un proyecto abierto para agregar un módulo.", "Información", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show("Debes tener un proyecto abierto para agregar un mÃ³dulo.", "InformaciÃ³n", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
 
@@ -1144,12 +1330,12 @@ public partial class MainWindow : Window
 
             LoadProject(_currentProject.ProjectFilePath);
             OpenFile(modPath);
-            SetStatusMessage($"Módulo '{modName}.bas' agregado al proyecto.");
+            SetStatusMessage($"MÃ³dulo '{modName}.bas' agregado al proyecto.");
         }
         catch (Exception ex)
         {
-            AppLogger.Error("Error al agregar módulo", ex);
-            MessageBox.Show($"Error al crear el módulo:\n\n{ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            AppLogger.Error("Error al agregar mÃ³dulo", ex);
+            MessageBox.Show($"Error al crear el mÃ³dulo:\n\n{ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -1159,7 +1345,7 @@ public partial class MainWindow : Window
         {
             if (_currentProject == null)
             {
-                MessageBox.Show("Debes tener un proyecto abierto para agregar un módulo de clase.", "Información", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show("Debes tener un proyecto abierto para agregar un mÃ³dulo de clase.", "InformaciÃ³n", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
 
@@ -1207,6 +1393,164 @@ public partial class MainWindow : Window
         }
     }
 
+    private void MenuAddUserControl_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (_currentProject == null)
+            {
+                MessageBox.Show("Debes tener un proyecto abierto para agregar un control de usuario.", "Información", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            int idx = 1;
+            string ucName = $"UserControl{idx}";
+            while (_currentProject.UserControls.Any(u => string.Equals(Path.GetFileNameWithoutExtension(u.AbsolutePath), ucName, StringComparison.OrdinalIgnoreCase)) ||
+                   File.Exists(Path.Combine(_currentProject.ProjectDirectory, $"{ucName}.ctl")))
+            {
+                idx++;
+                ucName = $"UserControl{idx}";
+            }
+
+            string ucPath = Path.Combine(_currentProject.ProjectDirectory, $"{ucName}.ctl");
+            string ucContent =
+                "VERSION 5.00\r\n" +
+                $"Begin VB.UserControl {ucName}\r\n" +
+                "   ClientHeight    =   3600\r\n" +
+                "   ClientLeft      =   0\r\n" +
+                "   ClientTop       =   0\r\n" +
+                "   ClientWidth     =   4800\r\n" +
+                "   ScaleHeight     =   3600\r\n" +
+                "   ScaleWidth      =   4800\r\n" +
+                "End\r\n" +
+                $"Attribute VB_Name = \"{ucName}\"\r\n" +
+                "Attribute VB_GlobalNameSpace = False\r\n" +
+                "Attribute VB_Creatable = True\r\n" +
+                "Attribute VB_PredeclaredId = False\r\n" +
+                "Attribute VB_Exposed = True\r\n" +
+                "Option Explicit\r\n\r\n";
+
+            File.WriteAllText(ucPath, ucContent, Encoding.GetEncoding(1252));
+
+            string vbpText = File.ReadAllText(_currentProject.ProjectFilePath, Encoding.GetEncoding(1252));
+            string newEntry = $"UserControl={ucName}.ctl\r\n";
+            vbpText += "\r\n" + newEntry;
+            File.WriteAllText(_currentProject.ProjectFilePath, vbpText, Encoding.GetEncoding(1252));
+
+            LoadProject(_currentProject.ProjectFilePath);
+            OpenFile(ucPath);
+            SetStatusMessage($"Control de usuario '{ucName}.ctl' agregado y proyectado en la Caja de Herramientas.");
+            AppLogger.Info($"Control de usuario agregado al proyecto: {ucPath}");
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error("Error al agregar control de usuario", ex);
+            MessageBox.Show($"Error al crear el control de usuario:\n\n{ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void MenuReferences_Click(object sender, RoutedEventArgs e)
+    {
+        ShowReferencesDialog();
+    }
+
+    private void ShowReferencesDialog()
+    {
+        if (_currentProject == null)
+        {
+            MessageBox.Show("Debes abrir o crear un proyecto para gestionar sus referencias de bibliotecas de tipos.", "Referencias del Proyecto", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var dlg = new Dialogs.ReferencesWindow(_currentProject)
+        {
+            Owner = this
+        };
+
+        if (dlg.ShowDialog() == true)
+        {
+            // 1. Registrar TypeLibs seleccionadas en IntelliSense para autocompletado y catálogo de miembros
+            foreach (var r in _currentProject.References)
+            {
+                if (!string.IsNullOrEmpty(r.FilePath) && File.Exists(r.FilePath))
+                {
+                    if (OcxTypeLibReader.TryReadTypeLib(r.FilePath, out var lib, out _) && lib != null)
+                    {
+                        VbControlMemberCatalog.RegisterOcxLibrary(lib);
+                    }
+                }
+            }
+
+            // 2. Persistir lista completa de referencias en el archivo .vbp
+            UpdateProjectReferencesInVbpFile(_currentProject);
+
+            SetStatusMessage($"Referencias actualizadas: {_currentProject.References.Count} bibliotecas enlazadas.");
+            AppLogger.Info($"Referencias del proyecto '{_currentProject.Name}' actualizadas. Total: {_currentProject.References.Count}");
+        }
+    }
+
+    private void UpdateProjectReferencesInVbpFile(VB6Project project)
+    {
+        if (project == null || string.IsNullOrEmpty(project.ProjectFilePath) || !File.Exists(project.ProjectFilePath))
+            return;
+
+        try
+        {
+            var lines = File.ReadAllLines(project.ProjectFilePath, Encoding.GetEncoding(1252)).ToList();
+
+            // Encontrar el primer índice donde estaban las referencias o insertar antes de Form=/Object=
+            int insertIndex = -1;
+            for (int i = 0; i < lines.Count; i++)
+            {
+                if (lines[i].TrimStart().StartsWith("Reference=", StringComparison.OrdinalIgnoreCase))
+                {
+                    insertIndex = i;
+                    break;
+                }
+            }
+
+            // Si no había referencias previas, buscar Form= o Object= o Startup=
+            if (insertIndex < 0)
+            {
+                for (int i = 0; i < lines.Count; i++)
+                {
+                    string trimmed = lines[i].TrimStart();
+                    if (trimmed.StartsWith("Object=", StringComparison.OrdinalIgnoreCase) ||
+                        trimmed.StartsWith("Form=", StringComparison.OrdinalIgnoreCase) ||
+                        trimmed.StartsWith("Module=", StringComparison.OrdinalIgnoreCase) ||
+                        trimmed.StartsWith("Class=", StringComparison.OrdinalIgnoreCase) ||
+                        trimmed.StartsWith("Startup=", StringComparison.OrdinalIgnoreCase))
+                    {
+                        insertIndex = i;
+                        break;
+                    }
+                }
+            }
+
+            if (insertIndex < 0) insertIndex = lines.Count;
+
+            // Remover todas las líneas Reference= existentes
+            lines.RemoveAll(l => l.TrimStart().StartsWith("Reference=", StringComparison.OrdinalIgnoreCase));
+
+            if (insertIndex > lines.Count) insertIndex = lines.Count;
+
+            // Insertar las referencias actualizadas en orden de prioridad
+            var refLines = project.References
+                .Select(r => !string.IsNullOrEmpty(r.RawLine)
+                    ? r.RawLine
+                    : $"Reference=*\\G{(r.Guid.StartsWith('{') ? r.Guid : "{" + r.Guid + "}")}#{r.MajorVersion}.{r.MinorVersion}#{r.Lcid}#{r.FilePath}#{r.Description}")
+                .ToList();
+
+            lines.InsertRange(insertIndex, refLines);
+
+            File.WriteAllLines(project.ProjectFilePath, lines, Encoding.GetEncoding(1252));
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"Error al actualizar referencias en {project.ProjectFilePath}: {ex.Message}", ex);
+        }
+    }
+
     private void MenuComponents_Click(object sender, RoutedEventArgs e)
     {
         ShowComponentsDialog();
@@ -1239,7 +1583,7 @@ public partial class MainWindow : Window
 
                 if (lib != null)
                 {
-                    // Registrar en el catálogo de miembros de IntelliSense
+                    // Registrar en el catÃ¡logo de miembros de IntelliSense
                     VbControlMemberCatalog.RegisterOcxLibrary(lib);
 
                     // Si es control visual o contiene controles, registrar en la caja de herramientas (Toolbox)
@@ -1249,7 +1593,7 @@ public partial class MainWindow : Window
                         totalTools += lib.Controls.Count(c => c.IsControl);
                     }
 
-                    // Agregar al proyecto actual si está abierto
+                    // Agregar al proyecto actual si estÃ¡ abierto
                     if (_currentProject != null)
                     {
                         string relPath = !string.IsNullOrEmpty(_currentProject.ProjectDirectory) && lib.FilePath.StartsWith(_currentProject.ProjectDirectory, StringComparison.OrdinalIgnoreCase)
@@ -1305,7 +1649,7 @@ public partial class MainWindow : Window
                         }
                         catch (Exception ex)
                         {
-                            AppLogger.Warn($"No se pudo persistir la línea del componente en el archivo VBP: {ex.Message}");
+                            AppLogger.Warn($"No se pudo persistir la lÃ­nea del componente en el archivo VBP: {ex.Message}");
                         }
                     }
 
@@ -1371,10 +1715,10 @@ public partial class MainWindow : Window
                 }
             }
 
-            // 3. Refrescar caja de herramientas en modo Diseño
+            // 3. Refrescar caja de herramientas en modo DiseÃ±o
             MainToolboxPanel.ReloadTools();
 
-            // 3b. Refrescar superficies de diseño abiertas para re-resolver controles OCX que estaban pendientes
+            // 3b. Refrescar superficies de diseÃ±o abiertas para re-resolver controles OCX que estaban pendientes
             foreach (var item in DocumentsTabControl.Items)
             {
                 if (item is EditorTabItem tab && tab.DesignSurface != null && tab.DesignModel != null)
@@ -1448,8 +1792,8 @@ public partial class MainWindow : Window
     {
         var dialog = new OpenFileDialog
         {
-            Title = "Abrir Archivo de Código ViBa7 (Compatibilidad con VB6)",
-            Filter = "Archivos de Código ViBa7 (*.bas;*.cls;*.frm;*.ctl;*.pag;*.dob;*.dsr)|*.bas;*.cls;*.frm;*.ctl;*.pag;*.dob;*.dsr|Módulos (*.bas)|*.bas|Clases (*.cls)|*.cls|Formularios (*.frm)|*.frm|User Controls (*.ctl)|*.ctl|Páginas de Propiedades (*.pag)|*.pag|Documentos de Usuario (*.dob)|*.dob|Diseñadores (*.dsr)|*.dsr|Todos los archivos (*.*)|*.*"
+            Title = "Abrir Archivo de CÃ³digo ViBa7 (Compatibilidad con VB6)",
+            Filter = "Archivos de CÃ³digo ViBa7 (*.bas;*.cls;*.frm;*.ctl;*.pag;*.dob;*.dsr)|*.bas;*.cls;*.frm;*.ctl;*.pag;*.dob;*.dsr|MÃ³dulos (*.bas)|*.bas|Clases (*.cls)|*.cls|Formularios (*.frm)|*.frm|User Controls (*.ctl)|*.ctl|PÃ¡ginas de Propiedades (*.pag)|*.pag|Documentos de Usuario (*.dob)|*.dob|DiseÃ±adores (*.dsr)|*.dsr|Todos los archivos (*.*)|*.*"
         };
 
         if (dialog.ShowDialog() == true)
@@ -1469,6 +1813,22 @@ public partial class MainWindow : Window
                 if (ActiveTab.Document.FilePath?.EndsWith(".ctl", StringComparison.OrdinalIgnoreCase) == true)
                 {
                     _currentProject?.InvalidateUserControlCache();
+                    _currentProjectGroup?.InvalidateUserControlCache();
+
+                    foreach (var item in DocumentsTabControl.Items)
+                    {
+                        if (item is EditorTabItem tab && tab.DesignSurface != null)
+                        {
+                            tab.DesignSurface.RefreshCanvas();
+                        }
+                    }
+
+                    if (_currentProjectGroup != null)
+                        ControlToolboxRegistry.RegisterUserControlTools(_currentProjectGroup);
+                    else if (_currentProject != null)
+                        ControlToolboxRegistry.RegisterUserControlTools(_currentProject);
+
+                    MainToolboxPanel.ReloadTools();
                 }
                 SetStatusMessage($"'{ActiveTab.Document.DisplayName}' guardado exitosamente.");
                 break;
@@ -1492,7 +1852,7 @@ public partial class MainWindow : Window
         {
             Title = "Guardar como",
             FileName = ActiveTab.Document.DisplayName,
-            Filter = "Archivos de Código VB6 (*.bas;*.cls;*.frm)|*.bas;*.cls;*.frm|Todos los archivos (*.*)|*.*"
+            Filter = "Archivos de CÃ³digo VB6 (*.bas;*.cls;*.frm)|*.bas;*.cls;*.frm|Todos los archivos (*.*)|*.*"
         };
 
         if (dialog.ShowDialog() == true)
@@ -1527,9 +1887,25 @@ public partial class MainWindow : Window
         if (userControlSaved)
         {
             _currentProject?.InvalidateUserControlCache();
+            _currentProjectGroup?.InvalidateUserControlCache();
+
+            foreach (var item in DocumentsTabControl.Items)
+            {
+                if (item is EditorTabItem tab && tab.DesignSurface != null)
+                {
+                    tab.DesignSurface.RefreshCanvas();
+                }
+            }
+
+            if (_currentProjectGroup != null)
+                ControlToolboxRegistry.RegisterUserControlTools(_currentProjectGroup);
+            else if (_currentProject != null)
+                ControlToolboxRegistry.RegisterUserControlTools(_currentProject);
+
+            MainToolboxPanel.ReloadTools();
         }
 
-        SetStatusMessage(count > 0 ? $"Se guardaron {count} documentos modificados." : "Todos los documentos están actualizados.");
+        SetStatusMessage(count > 0 ? $"Se guardaron {count} documentos modificados." : "Todos los documentos estÃ¡n actualizados.");
     }
 
     private void MenuCloseDoc_Click(object sender, RoutedEventArgs e)
@@ -1545,14 +1921,50 @@ public partial class MainWindow : Window
         CloseProjectAndAllDocuments();
     }
 
+    private void MenuSaveProjectGroup_Click(object sender, RoutedEventArgs e)
+    {
+        if (_currentProjectGroup == null) return;
+        try
+        {
+            _currentProjectGroup.Save();
+            SetStatusMessage($"Grupo de proyectos '{_currentProjectGroup.Name}' guardado exitosamente.");
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Error al guardar grupo de proyectos:\n\n{ex.Message}", "Guardar Grupo", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void MenuSetStartupProject_Click(object sender, RoutedEventArgs e)
+    {
+        if (_currentProjectGroup == null) return;
+
+        var targetProj = _currentProject;
+        if (targetProj == null || _currentProjectGroup.IsPrimaryProject(targetProj))
+        {
+            targetProj = _currentProjectGroup.SecondaryProjects.FirstOrDefault();
+        }
+
+        if (targetProj != null)
+        {
+            _currentProjectGroup.SetPrimaryProject(targetProj);
+            _currentProject = targetProj;
+            RefreshProjectTree();
+            UpdateMakeExeMenuState();
+            SetStatusMessage($"'{targetProj.Name}' establecido como Proyecto Principal (Inicio).");
+        }
+    }
+
     private void UpdateMakeExeMenuState()
     {
         if (MenuMakeExe == null) return;
 
-        if (_currentProject != null)
+        var projToBuild = _currentProject ?? _currentProjectGroup?.PrimaryProject;
+        if (projToBuild != null)
         {
-            string name = !string.IsNullOrWhiteSpace(_currentProject.Name) ? _currentProject.Name : "Proyecto1";
-            MenuMakeExe.Header = $"Generar _{name}.exe...";
+            string name = !string.IsNullOrWhiteSpace(projToBuild.Name) ? projToBuild.Name : "Proyecto1";
+            string roleSuffix = _currentProjectGroup != null && _currentProjectGroup.IsPrimaryProject(projToBuild) ? " (Principal)" : "";
+            MenuMakeExe.Header = $"Generar _{name}.exe{roleSuffix}...";
             MenuMakeExe.IsEnabled = true;
             if (BtnToolbarMakeExe != null) BtnToolbarMakeExe.IsEnabled = true;
         }
@@ -1568,7 +1980,7 @@ public partial class MainWindow : Window
     {
         if (_currentProject == null)
         {
-            MessageBox.Show("No hay ningún proyecto activo cargado para generar el ejecutable.\n\nPor favor abra o cree un proyecto primero.", "Generar Ejecutable", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show("No hay ningÃºn proyecto activo cargado para generar el ejecutable.\n\nPor favor abra o cree un proyecto primero.", "Generar Ejecutable", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
@@ -1581,11 +1993,11 @@ public partial class MainWindow : Window
         {
             var res = dlg.CompileResult;
             SetStatusMessage($"Ejecutable '{Path.GetFileName(res.OutputExePath)}' generado exitosamente ({res.OutputSizeBytes:N0} bytes).");
-            AppLogger.Info($"Compilación nativa x32 exitosa: {res.OutputExePath} ({res.OutputSizeBytes} bytes)");
+            AppLogger.Info($"CompilaciÃ³n nativa x32 exitosa: {res.OutputExePath} ({res.OutputSizeBytes} bytes)");
 
             var ask = MessageBox.Show(
-                $"El ejecutable nativo PE32 fue generado exitosamente:\n\n{res.OutputExePath}\nTamaño: {res.OutputSizeBytes:N0} bytes\nEnlace: msvbvm60.dll!ThunRTMain\n\n¿Desea abrir la carpeta contenedora?",
-                "Compilación Exitosa",
+                $"El ejecutable nativo PE32 fue generado exitosamente:\n\n{res.OutputExePath}\nTamaÃ±o: {res.OutputSizeBytes:N0} bytes\nEnlace: msvbvm60.dll!ThunRTMain\n\nÂ¿Desea abrir la carpeta contenedora?",
+                "CompilaciÃ³n Exitosa",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Information);
 
@@ -1775,6 +2187,37 @@ public partial class MainWindow : Window
         }
     }
 
+    private void MenuObjectBrowser_Click(object sender, RoutedEventArgs e)
+    {
+        OpenObjectBrowser();
+    }
+
+    public void OpenObjectBrowser()
+    {
+        var ob = new Dialogs.ObjectBrowserWindow(_currentProject)
+        {
+            Owner = this
+        };
+
+        ob.RequestNavigateToCode = (filePath, lineNumber) =>
+        {
+            var tab = OpenFile(filePath);
+            if (tab != null)
+            {
+                Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, new Action(() =>
+                {
+                    tab.SwitchToCodeView();
+                    tab.Editor.TextArea.Caret.Line = Math.Max(1, lineNumber);
+                    tab.Editor.TextArea.Caret.Column = 1;
+                    tab.Editor.ScrollTo(lineNumber, 1);
+                    tab.Editor.Focus();
+                }));
+            }
+        };
+
+        ob.ShowDialog();
+    }
+
     private void MenuToggleToolbox_Click(object sender, RoutedEventArgs e)
     {
         ColToolbox.Width = MenuToggleToolbox.IsChecked ? new GridLength(_settings.ToolboxWidth) : new GridLength(0);
@@ -1821,26 +2264,130 @@ public partial class MainWindow : Window
         else if (TabRadioTasks?.IsChecked == true) ShowBottomTab("Tasks");
         else if (TabRadioAnalysis?.IsChecked == true) ShowBottomTab("Analysis");
         else if (TabRadioImmediate?.IsChecked == true) ShowBottomTab("Immediate");
+        else if (TabRadioLocals?.IsChecked == true) ShowBottomTab("Locals");
+        else if (TabRadioCallStack?.IsChecked == true) ShowBottomTab("CallStack");
     }
 
     public void ShowBottomTab(string tabName)
     {
-        if (ViewOutput == null || ViewReferences == null || ViewTasks == null || ViewAnalysis == null || ViewImmediate == null) return;
-        if (TabRadioOutput == null || TabRadioReferences == null || TabRadioTasks == null || TabRadioAnalysis == null || TabRadioImmediate == null) return;
+        if (ViewOutput == null || ViewReferences == null || ViewTasks == null || ViewAnalysis == null || ViewImmediate == null || ViewLocals == null || ViewCallStack == null) return;
+        if (TabRadioOutput == null || TabRadioReferences == null || TabRadioTasks == null || TabRadioAnalysis == null || TabRadioImmediate == null || TabRadioLocals == null || TabRadioCallStack == null) return;
 
         ViewOutput.Visibility = (tabName == "Output") ? Visibility.Visible : Visibility.Collapsed;
         ViewReferences.Visibility = (tabName == "References") ? Visibility.Visible : Visibility.Collapsed;
         ViewTasks.Visibility = (tabName == "Tasks") ? Visibility.Visible : Visibility.Collapsed;
         ViewAnalysis.Visibility = (tabName == "Analysis") ? Visibility.Visible : Visibility.Collapsed;
         ViewImmediate.Visibility = (tabName == "Immediate") ? Visibility.Visible : Visibility.Collapsed;
+        ViewLocals.Visibility = (tabName == "Locals") ? Visibility.Visible : Visibility.Collapsed;
+        ViewCallStack.Visibility = (tabName == "CallStack") ? Visibility.Visible : Visibility.Collapsed;
 
         TabRadioOutput.IsChecked = (tabName == "Output");
         TabRadioReferences.IsChecked = (tabName == "References");
         TabRadioTasks.IsChecked = (tabName == "Tasks");
         TabRadioAnalysis.IsChecked = (tabName == "Analysis");
         TabRadioImmediate.IsChecked = (tabName == "Immediate");
+        TabRadioLocals.IsChecked = (tabName == "Locals");
+        TabRadioCallStack.IsChecked = (tabName == "CallStack");
 
         SetOutputPanelVisibility(true);
+    }
+
+    public class LocalVariableDisplayItem
+    {
+        public string Name { get; set; } = string.Empty;
+        public string Value { get; set; } = string.Empty;
+        public string Type { get; set; } = string.Empty;
+        public string Scope { get; set; } = string.Empty;
+    }
+
+    public class CallStackDisplayItem
+    {
+        public string ProcedureName { get; set; } = string.Empty;
+        public string ContainerName { get; set; } = string.Empty;
+        public int LineNumber { get; set; }
+    }
+
+    public void RefreshLocalsWindow()
+    {
+        if (_liveExecutionHost == null || LstLocals == null) return;
+
+        var items = new List<LocalVariableDisplayItem>();
+        var frame = _liveExecutionHost.Context.CurrentFrame;
+        if (frame != null)
+        {
+            foreach (var kvp in frame.LocalVariables.OrderBy(k => k.Key))
+            {
+                items.Add(new LocalVariableDisplayItem
+                {
+                    Name = kvp.Key,
+                    Value = kvp.Value.AsString(),
+                    Type = kvp.Value.VarType.ToString(),
+                    Scope = "Local"
+                });
+            }
+
+            foreach (var kvp in _liveExecutionHost.Context.StaticVariables.OrderBy(k => k.Key))
+            {
+                if (kvp.Key.StartsWith(frame.ProcedureName + ".", StringComparison.OrdinalIgnoreCase))
+                {
+                    string varName = kvp.Key[(frame.ProcedureName.Length + 1)..];
+                    items.Add(new LocalVariableDisplayItem
+                    {
+                        Name = varName,
+                        Value = kvp.Value.AsString(),
+                        Type = kvp.Value.VarType.ToString(),
+                        Scope = "Static"
+                    });
+                }
+            }
+        }
+
+        foreach (var kvp in _liveExecutionHost.Context.ModuleVariables.OrderBy(k => k.Key))
+        {
+            if (!kvp.Key.Contains('.'))
+            {
+                items.Add(new LocalVariableDisplayItem
+                {
+                    Name = kvp.Key,
+                    Value = kvp.Value.AsString(),
+                    Type = kvp.Value.VarType.ToString(),
+                    Scope = "Module"
+                });
+            }
+        }
+
+        LstLocals.ItemsSource = items;
+    }
+
+    public void RefreshCallStackWindow()
+    {
+        if (_liveExecutionHost == null || LstCallStack == null) return;
+
+        var stackItems = new List<CallStackDisplayItem>();
+        foreach (var frame in _liveExecutionHost.Context.CallStack)
+        {
+            stackItems.Add(new CallStackDisplayItem
+            {
+                ProcedureName = frame.ProcedureName,
+                ContainerName = frame.ModuleOrFormName ?? "(General)",
+                LineNumber = frame.CurrentLineNumber
+            });
+        }
+
+        LstCallStack.ItemsSource = stackItems;
+    }
+
+    private void LstCallStack_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (LstCallStack.SelectedItem is CallStackDisplayItem item)
+        {
+            if (item.LineNumber > 0 && ActiveEditor != null && item.LineNumber <= ActiveEditor.Document.LineCount)
+            {
+                ActiveEditor.ScrollToLine(item.LineNumber);
+                ActiveEditor.TextArea.Caret.Line = item.LineNumber;
+                ActiveEditor.Focus();
+            }
+        }
     }
 
     private void MenuImmediateWindow_Click(object sender, RoutedEventArgs e)
@@ -1899,13 +2446,13 @@ public partial class MainWindow : Window
     {
         if (ActiveTab == null)
         {
-            MessageBox.Show("No hay ningún documento activo para editar menús.", "Editor de Menús", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show("No hay ningÃºn documento activo para editar menÃºs.", "Editor de MenÃºs", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
         if (ActiveTab.DesignModel == null)
         {
-            MessageBox.Show("El Editor de Menús solo está disponible para formularios y controles de usuario ViBa7 (Compatibilidad con VB6) (.frm / .ctl).", "Editor de Menús", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show("El Editor de MenÃºs solo estÃ¡ disponible para formularios y controles de usuario ViBa7 (Compatibilidad con VB6) (.frm / .ctl).", "Editor de MenÃºs", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
@@ -1918,18 +2465,18 @@ public partial class MainWindow : Window
 
             if (editorWnd.ShowDialog() == true)
             {
-                // El modelo fue actualizado con la nueva jerarquía de menús
+                // El modelo fue actualizado con la nueva jerarquÃ­a de menÃºs
                 ActiveTab.Document.Header = FormDesignSerializer.Serialize(ActiveTab.DesignModel);
                 ActiveTab.Document.IsDirty = true;
                 ActiveTab.DesignSurface?.RefreshVisuals();
                 MainPropertyGridPanel.RefreshObjectList();
-                SetStatusMessage("Estructura de menús actualizada.");
+                SetStatusMessage("Estructura de menÃºs actualizada.");
             }
         }
         catch (Exception ex)
         {
-            AppLogger.Error("Error al abrir el Editor de Menús", ex);
-            MessageBox.Show($"Ocurrió un error al abrir el Editor de Menús:\n\n{ex.Message}", "Editor de Menús", MessageBoxButton.OK, MessageBoxImage.Error);
+            AppLogger.Error("Error al abrir el Editor de MenÃºs", ex);
+            MessageBox.Show($"OcurriÃ³ un error al abrir el Editor de MenÃºs:\n\n{ex.Message}", "Editor de MenÃºs", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -1938,7 +2485,7 @@ public partial class MainWindow : Window
         var opt = new OptionsWindow(_settings) { Owner = this };
         if (opt.ShowDialog() == true)
         {
-            // Aplicar cambios a las pestañas abiertas
+            // Aplicar cambios a las pestaÃ±as abiertas
             foreach (var item in DocumentsTabControl.Items)
             {
                 if (item is EditorTabItem tab)
@@ -1966,7 +2513,7 @@ public partial class MainWindow : Window
 
     private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        // F5: Iniciar Ejecución en Caliente / Shift+F5: Detener
+        // F5: Iniciar EjecuciÃ³n en Caliente / Shift+F5: Detener
         if (e.Key == Key.F5)
         {
             if ((Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
@@ -1997,6 +2544,14 @@ public partial class MainWindow : Window
             return;
         }
 
+        // F2: Examinador de Objetos (VB6 Clásico)
+        if (e.Key == Key.F2 && Keyboard.Modifiers == ModifierKeys.None)
+        {
+            OpenObjectBrowser();
+            e.Handled = true;
+            return;
+        }
+
         // Ctrl+Break / Pause: Interrumpir / Pausa
         if (e.Key is Key.Pause or Key.Cancel && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
         {
@@ -2020,12 +2575,21 @@ public partial class MainWindow : Window
             return;
         }
 
-        // F9: Alternar punto de interrupción
-        if (e.Key == Key.F9 && Keyboard.Modifiers == ModifierKeys.None)
+        // F9: Alternar punto de interrupciÃ³n
+        if (e.Key == Key.F9)
         {
-            MenuToggleBreakpoint_Click(this, new RoutedEventArgs());
-            e.Handled = true;
-            return;
+            if ((Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) == (ModifierKeys.Control | ModifierKeys.Shift))
+            {
+                MenuClearAllBreakpoints_Click(this, new RoutedEventArgs());
+                e.Handled = true;
+                return;
+            }
+            if (Keyboard.Modifiers == ModifierKeys.None)
+            {
+                MenuToggleBreakpoint_Click(this, new RoutedEventArgs());
+                e.Handled = true;
+                return;
+            }
         }
 
         // Ctrl+Shift+N: Nuevo Proyecto / Ctrl+N: Nuevo Formulario
@@ -2081,7 +2645,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        // Ctrl+E: Editor de Menús (VB6 Clásico)
+        // Ctrl+E: Editor de MenÃºs (VB6 ClÃ¡sico)
         if (e.Key == Key.E && Keyboard.Modifiers == ModifierKeys.Control)
         {
             OpenMenuEditor();
@@ -2089,7 +2653,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        // F7: Ver Código / Shift+F7: Ver Diseñador (Flujo Dual VB6)
+        // F7: Ver CÃ³digo / Shift+F7: Ver DiseÃ±ador (Flujo Dual VB6)
         if (e.Key == Key.F7)
         {
             if (ActiveTab?.DesignSurface != null)
@@ -2164,7 +2728,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        // 0. Navegación Atrás / Adelante: Alt+Left o Ctrl+- / Alt+Right o Ctrl+Shift+-
+        // 0. NavegaciÃ³n AtrÃ¡s / Adelante: Alt+Left o Ctrl+- / Alt+Right o Ctrl+Shift+-
         if ((e.Key == Key.Left && Keyboard.Modifiers == ModifierKeys.Alt) ||
             (e.Key == Key.OemMinus && Keyboard.Modifiers == ModifierKeys.Control))
         {
@@ -2224,7 +2788,7 @@ public partial class MainWindow : Window
             if (ActiveEditor != null)
             {
                 EditorOperationsHelper.SwitchAssignment(ActiveEditor);
-                SetStatusMessage("Asignaciones invertidas (A = B ⇄ B = A).");
+                SetStatusMessage("Asignaciones invertidas (A = B ? B = A).");
                 e.Handled = true;
                 return;
             }
@@ -2245,7 +2809,7 @@ public partial class MainWindow : Window
                 if (ActiveEditor != null)
                 {
                     EditorOperationsHelper.CommentSelection(ActiveEditor);
-                    SetStatusMessage("Líneas comentadas.");
+                    SetStatusMessage("LÃ­neas comentadas.");
                 }
                 e.Handled = true;
                 return;
@@ -2255,7 +2819,7 @@ public partial class MainWindow : Window
                 if (ActiveEditor != null)
                 {
                     EditorOperationsHelper.UncommentSelection(ActiveEditor);
-                    SetStatusMessage("Líneas descomentadas.");
+                    SetStatusMessage("LÃ­neas descomentadas.");
                 }
                 e.Handled = true;
                 return;
@@ -2284,7 +2848,7 @@ public partial class MainWindow : Window
                 e.Handled = true;
                 return;
             }
-            SetStatusMessage("Combinación Ctrl+K cancelada.");
+            SetStatusMessage("CombinaciÃ³n Ctrl+K cancelada.");
         }
         else if (e.Key == Key.K && Keyboard.Modifiers == ModifierKeys.Control)
         {
@@ -2294,7 +2858,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        // 3. Portapapeles múltiple: Ctrl+Shift+V
+        // 3. Portapapeles mÃºltiple: Ctrl+Shift+V
         if (e.Key == Key.V && (Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) == (ModifierKeys.Control | ModifierKeys.Shift))
         {
             OpenClipboardRingDialog();
@@ -2327,7 +2891,7 @@ public partial class MainWindow : Window
             }
         }
 
-        SetStatusMessage(enabled ? "Resaltado de línea activa activado." : "Resaltado de línea activa desactivado.");
+        SetStatusMessage(enabled ? "Resaltado de lÃ­nea activa activado." : "Resaltado de lÃ­nea activa desactivado.");
     }
 
     private void MenuToggleBranchLines_Click(object sender, RoutedEventArgs e)
@@ -2354,7 +2918,7 @@ public partial class MainWindow : Window
             }
         }
 
-        SetStatusMessage(enabled ? "Guías de bloques (Branch Lines) activadas." : "Guías de bloques desactivadas.");
+        SetStatusMessage(enabled ? "GuÃ­as de bloques (Branch Lines) activadas." : "GuÃ­as de bloques desactivadas.");
     }
 
     private void MenuToggleEndOfLineDetails_Click(object sender, RoutedEventArgs e)
@@ -2407,7 +2971,7 @@ public partial class MainWindow : Window
         if (ActiveEditor != null)
         {
             EditorOperationsHelper.SwitchAssignment(ActiveEditor);
-            SetStatusMessage("Asignaciones invertidas exitosamente (A = B ⇄ B = A).");
+            SetStatusMessage("Asignaciones invertidas exitosamente (A = B ? B = A).");
         }
     }
 
@@ -2416,7 +2980,7 @@ public partial class MainWindow : Window
         if (ActiveEditor != null)
         {
             EditorOperationsHelper.ConvertCase(ActiveEditor, ProjectModel.Advanced.TextCaseMode.Upper);
-            SetStatusMessage("Texto convertido a MAYÚSCULAS.");
+            SetStatusMessage("Texto convertido a MAYÃšSCULAS.");
         }
     }
 
@@ -2425,7 +2989,7 @@ public partial class MainWindow : Window
         if (ActiveEditor != null)
         {
             EditorOperationsHelper.ConvertCase(ActiveEditor, ProjectModel.Advanced.TextCaseMode.Lower);
-            SetStatusMessage("Texto convertido a minúsculas.");
+            SetStatusMessage("Texto convertido a minÃºsculas.");
         }
     }
 
@@ -2434,7 +2998,7 @@ public partial class MainWindow : Window
         if (ActiveEditor != null)
         {
             EditorOperationsHelper.ConvertCase(ActiveEditor, ProjectModel.Advanced.TextCaseMode.Title);
-            SetStatusMessage("Texto convertido a Tipo Título.");
+            SetStatusMessage("Texto convertido a Tipo TÃ­tulo.");
         }
     }
 
@@ -2442,7 +3006,7 @@ public partial class MainWindow : Window
     {
         if (ActiveEditor == null)
         {
-            MessageBox.Show("Debes abrir un archivo de código para usar el Asistente de Propiedades.",
+            MessageBox.Show("Debes abrir un archivo de cÃ³digo para usar el Asistente de Propiedades.",
                 "Asistente de Propiedades", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
@@ -2459,7 +3023,7 @@ public partial class MainWindow : Window
     {
         if (ActiveEditor == null)
         {
-            MessageBox.Show("Debes abrir un archivo de código para usar el Asistente de Procedimientos.",
+            MessageBox.Show("Debes abrir un archivo de cÃ³digo para usar el Asistente de Procedimientos.",
                 "Asistente de Procedimientos", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
@@ -2476,7 +3040,7 @@ public partial class MainWindow : Window
     {
         if (ActiveEditor == null)
         {
-            MessageBox.Show("Debes abrir un archivo de código para insertar snippets.",
+            MessageBox.Show("Debes abrir un archivo de cÃ³digo para insertar snippets.",
                 "Insertar Snippet", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
@@ -2535,8 +3099,8 @@ public partial class MainWindow : Window
     {
         if (ActiveEditor == null)
         {
-            MessageBox.Show("Debes abrir un archivo de código para pegar desde el portapapeles.",
-                "Portapapeles Múltiple", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show("Debes abrir un archivo de cÃ³digo para pegar desde el portapapeles.",
+                "Portapapeles MÃºltiple", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
@@ -2595,7 +3159,7 @@ public partial class MainWindow : Window
     }
     #endregion
 
-    #region Fase 4: Formato, Ordenación, Diff y Estadísticas
+    #region Fase 4: Formato, OrdenaciÃ³n, Diff y EstadÃ­sticas
     private void MenuFormatDocument_Click(object sender, RoutedEventArgs e)
     {
         FormatActiveDocument();
@@ -2625,7 +3189,7 @@ public partial class MainWindow : Window
     {
         if (ActiveEditor == null || ActiveEditor.Document == null)
         {
-            SetStatusMessage("No hay ningún documento activo para formatear.");
+            SetStatusMessage("No hay ningÃºn documento activo para formatear.");
             return;
         }
 
@@ -2667,7 +3231,7 @@ public partial class MainWindow : Window
     {
         if (ActiveEditor == null || ActiveEditor.Document == null)
         {
-            SetStatusMessage("No hay ningún documento activo.");
+            SetStatusMessage("No hay ningÃºn documento activo.");
             return;
         }
 
@@ -2698,7 +3262,7 @@ public partial class MainWindow : Window
     {
         if (ActiveEditor == null || ActiveEditor.Document == null)
         {
-            MessageBox.Show(this, "Debes abrir un archivo de código para ordenar sus procedimientos.", "Ordenar Procedimientos", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(this, "Debes abrir un archivo de cÃ³digo para ordenar sus procedimientos.", "Ordenar Procedimientos", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
@@ -2723,7 +3287,7 @@ public partial class MainWindow : Window
                 {
                     ActiveEditor.Document.EndUpdate();
                 }
-                SetStatusMessage("Procedimientos del módulo reordenados exitosamente.");
+                SetStatusMessage("Procedimientos del mÃ³dulo reordenados exitosamente.");
             }
         }
     }
@@ -2732,7 +3296,7 @@ public partial class MainWindow : Window
     {
         if (ActiveEditor == null || ActiveTab == null)
         {
-            MessageBox.Show(this, "No hay ningún documento activo para comparar diferencias.", "Visual Diff", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(this, "No hay ningÃºn documento activo para comparar diferencias.", "Visual Diff", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
@@ -2796,7 +3360,7 @@ public partial class MainWindow : Window
         }
         else
         {
-            MessageBox.Show(this, "No hay ningún proyecto ni documento abierto para calcular estadísticas.", "Estadísticas de Código", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(this, "No hay ningÃºn proyecto ni documento abierto para calcular estadÃ­sticas.", "EstadÃ­sticas de CÃ³digo", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
@@ -2829,7 +3393,7 @@ public partial class MainWindow : Window
     {
         if (ActiveEditor == null || ActiveTab == null)
         {
-            MessageBox.Show(this, "Debes abrir un archivo de código para gestionar el manejo de errores.", "Manejo de Errores", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(this, "Debes abrir un archivo de cÃ³digo para gestionar el manejo de errores.", "Manejo de Errores", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
@@ -2870,7 +3434,7 @@ public partial class MainWindow : Window
     {
         if (ActiveEditor == null || ActiveTab == null)
         {
-            MessageBox.Show(this, "Debes abrir un archivo de código para inyectar o retirar trazas.", "Inyección de Trazas", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(this, "Debes abrir un archivo de cÃ³digo para inyectar o retirar trazas.", "InyecciÃ³n de Trazas", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
@@ -2911,7 +3475,7 @@ public partial class MainWindow : Window
     {
         if (ActiveEditor == null || ActiveTab == null)
         {
-            SetStatusMessage("No hay ningún documento activo.");
+            SetStatusMessage("No hay ningÃºn documento activo.");
             return;
         }
 
@@ -2936,12 +3500,12 @@ public partial class MainWindow : Window
         }
         else
         {
-            SetStatusMessage("No se detectaron trazas inyectadas en el módulo activo.");
+            SetStatusMessage("No se detectaron trazas inyectadas en el mÃ³dulo activo.");
         }
     }
     #endregion
 
-    #region Fase 6: Diseñadores y Analizador de Calidad
+    #region Fase 6: DiseÃ±adores y Analizador de Calidad
     private void MenuTabOrder_Click(object sender, RoutedEventArgs e)
     {
         OpenTabOrderDialog();
@@ -2951,14 +3515,14 @@ public partial class MainWindow : Window
     {
         if (ActiveTab == null || ActiveTab.Document == null)
         {
-            MessageBox.Show(this, "Abre un formulario (.frm, .ctl, .pag) para gestionar el orden de tabulación.", "Orden de Tabulación", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(this, "Abre un formulario (.frm, .ctl, .pag) para gestionar el orden de tabulaciÃ³n.", "Orden de TabulaciÃ³n", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
         string header = ActiveTab.Document.Header ?? string.Empty;
         if (string.IsNullOrWhiteSpace(header))
         {
-            MessageBox.Show(this, "El archivo actual no posee una definición visual de formulario/controles o es un módulo estándar (.bas / .cls).", "Orden de Tabulación", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(this, "El archivo actual no posee una definiciÃ³n visual de formulario/controles o es un mÃ³dulo estÃ¡ndar (.bas / .cls).", "Orden de TabulaciÃ³n", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
@@ -2975,7 +3539,7 @@ public partial class MainWindow : Window
                 ActiveTab.Document.Header = dlg.ResultingHeader;
                 ActiveTab.Document.IsDirty = true;
                 ActiveTab.UpdateHeaderDisplay();
-                SetStatusMessage($"Orden de tabulación actualizado en '{formName}'.");
+                SetStatusMessage($"Orden de tabulaciÃ³n actualizado en '{formName}'.");
             }
         }
     }
@@ -2989,14 +3553,14 @@ public partial class MainWindow : Window
     {
         if (ActiveTab == null || ActiveTab.Document == null)
         {
-            MessageBox.Show(this, "Abre un formulario (.frm, .ctl, .pag) para verificar las teclas rápidas de acceso.", "Teclas Rápidas (Hotkeys)", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(this, "Abre un formulario (.frm, .ctl, .pag) para verificar las teclas rÃ¡pidas de acceso.", "Teclas RÃ¡pidas (Hotkeys)", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
         string header = ActiveTab.Document.Header ?? string.Empty;
         if (string.IsNullOrWhiteSpace(header))
         {
-            MessageBox.Show(this, "El archivo actual no posee una definición visual de formulario/controles o es un módulo estándar (.bas / .cls).", "Teclas Rápidas (Hotkeys)", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(this, "El archivo actual no posee una definiciÃ³n visual de formulario/controles o es un mÃ³dulo estÃ¡ndar (.bas / .cls).", "Teclas RÃ¡pidas (Hotkeys)", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
@@ -3013,7 +3577,7 @@ public partial class MainWindow : Window
                 ActiveTab.Document.Header = dlg.ResultingHeader;
                 ActiveTab.Document.IsDirty = true;
                 ActiveTab.UpdateHeaderDisplay();
-                SetStatusMessage($"Teclas rápidas actualizadas en '{formName}'.");
+                SetStatusMessage($"Teclas rÃ¡pidas actualizadas en '{formName}'.");
             }
         }
     }
@@ -3032,7 +3596,7 @@ public partial class MainWindow : Window
     {
         LstAnalysis.ItemsSource = null;
         TxtAnalysisStatus.Text = "0 advertencias encontradas";
-        SetStatusMessage("Lista de análisis de calidad limpiada.");
+        SetStatusMessage("Lista de anÃ¡lisis de calidad limpiada.");
     }
 
     public void RunCodeAnalysis()
@@ -3066,7 +3630,7 @@ public partial class MainWindow : Window
         }
         else
         {
-            MessageBox.Show(this, "No hay ningún proyecto ni archivo abierto para analizar.", "Analizador de Código", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(this, "No hay ningÃºn proyecto ni archivo abierto para analizar.", "Analizador de CÃ³digo", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
@@ -3074,7 +3638,7 @@ public partial class MainWindow : Window
         LstAnalysis.ItemsSource = sortedIssues;
         TxtAnalysisStatus.Text = $"{sortedIssues.Count} advertencia(s) / sugerencia(s) encontradas";
         ShowBottomTab("Analysis");
-        SetStatusMessage($"Análisis de calidad completado: {sortedIssues.Count} observación(es).");
+        SetStatusMessage($"AnÃ¡lisis de calidad completado: {sortedIssues.Count} observaciÃ³n(es).");
     }
 
     private void LstAnalysis_MouseDoubleClick(object sender, MouseButtonEventArgs e)
@@ -3089,13 +3653,13 @@ public partial class MainWindow : Window
                 tab.Editor.CaretOffset = lineObj.Offset;
                 tab.Editor.ScrollToLine(issue.LineNumber);
                 tab.Editor.Focus();
-                SetStatusMessage($"Navegando a advertencia: {issue.RuleId} en {Path.GetFileName(issue.FilePath)} (Línea {issue.LineNumber})");
+                SetStatusMessage($"Navegando a advertencia: {issue.RuleId} en {Path.GetFileName(issue.FilePath)} (LÃ­nea {issue.LineNumber})");
             }
         }
     }
     #endregion
 
-    #region Navegación e Historial (Alt+← / Alt+→)
+    #region NavegaciÃ³n e Historial (Alt+? / Alt+?)
     private void MenuNavBackward_Click(object sender, RoutedEventArgs e)
     {
         NavigateBackward();
@@ -3123,12 +3687,12 @@ public partial class MainWindow : Window
                 tab.Editor.CaretOffset = targetOffset;
                 tab.Editor.ScrollToLine(target.LineNumber);
                 tab.Editor.Focus();
-                SetStatusMessage($"Navegación atrás: {Path.GetFileName(target.FilePath)} (Línea {target.LineNumber})");
+                SetStatusMessage($"NavegaciÃ³n atrÃ¡s: {Path.GetFileName(target.FilePath)} (LÃ­nea {target.LineNumber})");
             }
         }
         else
         {
-            SetStatusMessage("No hay más ubicaciones anteriores en el historial de navegación.");
+            SetStatusMessage("No hay mÃ¡s ubicaciones anteriores en el historial de navegaciÃ³n.");
         }
     }
 
@@ -3149,12 +3713,12 @@ public partial class MainWindow : Window
                 tab.Editor.CaretOffset = targetOffset;
                 tab.Editor.ScrollToLine(target.LineNumber);
                 tab.Editor.Focus();
-                SetStatusMessage($"Navegación adelante: {Path.GetFileName(target.FilePath)} (Línea {target.LineNumber})");
+                SetStatusMessage($"NavegaciÃ³n adelante: {Path.GetFileName(target.FilePath)} (LÃ­nea {target.LineNumber})");
             }
         }
         else
         {
-            SetStatusMessage("No hay más ubicaciones posteriores en el historial de navegación.");
+            SetStatusMessage("No hay mÃ¡s ubicaciones posteriores en el historial de navegaciÃ³n.");
         }
     }
     #endregion
@@ -3186,7 +3750,7 @@ public partial class MainWindow : Window
         int line = ActiveTab.Editor.TextArea.Caret.Line;
         bool added = BookmarkManager.Instance.ToggleBookmark(ActiveTab.Document.FilePath, line);
         ActiveTab.BookmarkMargin?.InvalidateVisual();
-        SetStatusMessage(added ? $"Marcador agregado en línea {line}." : $"Marcador eliminado de línea {line}.");
+        SetStatusMessage(added ? $"Marcador agregado en lÃ­nea {line}." : $"Marcador eliminado de lÃ­nea {line}.");
     }
 
     public void GoToNextBookmark()
@@ -3205,7 +3769,7 @@ public partial class MainWindow : Window
                 tab.Editor.CaretOffset = lineObj.Offset;
                 tab.Editor.ScrollToLine(next.Value.Line);
                 tab.Editor.Focus();
-                SetStatusMessage($"Marcador: {Path.GetFileName(next.Value.FilePath)} (Línea {next.Value.Line})");
+                SetStatusMessage($"Marcador: {Path.GetFileName(next.Value.FilePath)} (LÃ­nea {next.Value.Line})");
             }
         }
         else
@@ -3230,7 +3794,7 @@ public partial class MainWindow : Window
                 tab.Editor.CaretOffset = lineObj.Offset;
                 tab.Editor.ScrollToLine(prev.Value.Line);
                 tab.Editor.Focus();
-                SetStatusMessage($"Marcador: {Path.GetFileName(prev.Value.FilePath)} (Línea {prev.Value.Line})");
+                SetStatusMessage($"Marcador: {Path.GetFileName(prev.Value.FilePath)} (LÃ­nea {prev.Value.Line})");
             }
         }
         else
@@ -3253,7 +3817,7 @@ public partial class MainWindow : Window
     }
     #endregion
 
-    #region Búsqueda de Referencias (Find References)
+    #region BÃºsqueda de Referencias (Find References)
     private void MenuFindReferences_Click(object sender, RoutedEventArgs e)
     {
         FindReferencesForCurrentSymbol();
@@ -3267,7 +3831,7 @@ public partial class MainWindow : Window
     private void BtnClearReferences_Click(object sender, RoutedEventArgs e)
     {
         LstReferences.ItemsSource = null;
-        TxtReferencesStatus.Text = "Búsqueda limpiada.";
+        TxtReferencesStatus.Text = "BÃºsqueda limpiada.";
     }
 
     public void FindReferencesForCurrentSymbol()
@@ -3276,7 +3840,7 @@ public partial class MainWindow : Window
 
         if (string.IsNullOrWhiteSpace(symbol))
         {
-            var dlg = new InputPromptDialog("Buscar todas las referencias", "Ingresa el nombre del símbolo, rutina o variable a buscar:")
+            var dlg = new InputPromptDialog("Buscar todas las referencias", "Ingresa el nombre del sÃ­mbolo, rutina o variable a buscar:")
             {
                 Owner = this
             };
@@ -3293,7 +3857,7 @@ public partial class MainWindow : Window
         var projectFiles = GetSearchableFiles();
         if (projectFiles.Count == 0)
         {
-            MessageBox.Show("Debes abrir un proyecto o archivo de código para buscar referencias.", "Buscar Referencias", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show("Debes abrir un proyecto o archivo de cÃ³digo para buscar referencias.", "Buscar Referencias", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
@@ -3389,7 +3953,7 @@ public partial class MainWindow : Window
     }
     #endregion
 
-    #region Utilidades de Navegación y Documentos
+    #region Utilidades de NavegaciÃ³n y Documentos
     private List<string> GetSearchableFiles()
     {
         var files = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -3456,7 +4020,7 @@ public partial class MainWindow : Window
         if (ActiveEditor != null)
         {
             EditorOperationsHelper.CommentSelection(ActiveEditor);
-            SetStatusMessage("Líneas comentadas.");
+            SetStatusMessage("LÃ­neas comentadas.");
         }
     }
 
@@ -3465,7 +4029,7 @@ public partial class MainWindow : Window
         if (ActiveEditor != null)
         {
             EditorOperationsHelper.UncommentSelection(ActiveEditor);
-            SetStatusMessage("Líneas descomentadas.");
+            SetStatusMessage("LÃ­neas descomentadas.");
         }
     }
     #endregion
@@ -3479,10 +4043,72 @@ public partial class MainWindow : Window
         }
     }
 
-    #region Ejecución en Caliente (Hot-Run / F5)
+    #region EjecuciÃ³n en Caliente (Hot-Run / F5)
+
+    private System.Windows.Threading.DispatcherFrame? _activeDebugFrame;
+
+    private bool HandleDebuggerPause()
+    {
+        string? file = _liveExecutionHost?.Context.PausedFilePath;
+        int line = _liveExecutionHost?.Context.PausedLineNumber ?? 0;
+
+        Dispatcher.Invoke(() =>
+        {
+            // 1. Mostrar puntero de ejecuci?n (Flecha amarilla en margen + l?nea amarilla)
+            BookmarkMargin.SetExecutionPointer(file, line);
+
+            // 2. Abrir o activar pesta?a correspondiente al archivo en pausa
+            if (!string.IsNullOrEmpty(file) && File.Exists(file))
+            {
+                OpenFile(file);
+                if (ActiveEditor != null && line > 0 && line <= ActiveEditor.Document.LineCount)
+                {
+                    ActiveEditor.ScrollToLine(line);
+                    ActiveEditor.TextArea.Caret.Line = line;
+                }
+            }
+
+            // 3. Actualizar paneles de inspecci?n (Variables Locales y Pila de Llamadas)
+            RefreshLocalsWindow();
+            RefreshCallStackWindow();
+            ShowBottomTab("Locals");
+
+            // 4. Actualizar botones de depuraci?n
+            MenuRunStart.IsEnabled = true;
+            BtnToolbarRunStart.IsEnabled = true;
+            MenuRunPause.IsEnabled = false;
+            BtnToolbarRunPause.IsEnabled = false;
+            MenuRunStop.IsEnabled = true;
+            BtnToolbarRunStop.IsEnabled = true;
+
+            SetStatusMessage($"Depuraci?n en pausa: L?nea {line} ({Path.GetFileName(file)})");
+        });
+
+        // 5. Entrar en bucle modal para bombear mensajes de la UI mientras est? en pausa
+        _activeDebugFrame = new System.Windows.Threading.DispatcherFrame();
+        System.Windows.Threading.Dispatcher.PushFrame(_activeDebugFrame);
+
+        return _liveExecutionHost?.Context.State != ExecutionState.Stopped;
+    }
 
     private void MenuRunStart_Click(object sender, RoutedEventArgs e)
     {
+        if (_activeDebugFrame != null && _liveExecutionHost != null)
+        {
+            // Reanudar ejecuci?n continua
+            _liveExecutionHost.Context.CurrentStepMode = StepMode.None;
+            _liveExecutionHost.Context.State = ExecutionState.Running;
+            BookmarkMargin.ClearExecutionPointer();
+            SetStatusMessage("Ejecutando...");
+            MenuRunStart.IsEnabled = false;
+            BtnToolbarRunStart.IsEnabled = false;
+            MenuRunPause.IsEnabled = true;
+            BtnToolbarRunPause.IsEnabled = true;
+            _activeDebugFrame.Continue = false;
+            _activeDebugFrame = null;
+            return;
+        }
+
         StartHotRun();
     }
 
@@ -3491,7 +4117,7 @@ public partial class MainWindow : Window
         if (_liveExecutionHost != null)
         {
             _liveExecutionHost.Context.State = ExecutionState.Paused;
-            SetStatusMessage("Ejecución en pausa (Interrupción)");
+            SetStatusMessage("Ejecuci?n en pausa (Interrupci?n)");
             MenuRunStart.IsEnabled = true;
             BtnToolbarRunStart.IsEnabled = true;
             MenuRunPause.IsEnabled = false;
@@ -3501,34 +4127,64 @@ public partial class MainWindow : Window
 
     private void MenuRunStop_Click(object sender, RoutedEventArgs e)
     {
+        if (_activeDebugFrame != null && _liveExecutionHost != null)
+        {
+            _liveExecutionHost.Context.State = ExecutionState.Stopped;
+            BookmarkMargin.ClearExecutionPointer();
+            _activeDebugFrame.Continue = false;
+            _activeDebugFrame = null;
+        }
+
         StopHotRun();
     }
 
     private void MenuStepInto_Click(object sender, RoutedEventArgs e)
     {
+        if (_activeDebugFrame != null && _liveExecutionHost != null)
+        {
+            _liveExecutionHost.Context.CurrentStepMode = StepMode.StepInto;
+            _liveExecutionHost.Context.State = ExecutionState.Running;
+            BookmarkMargin.ClearExecutionPointer();
+            SetStatusMessage("Paso a paso por instrucciones (Step Into)");
+            _activeDebugFrame.Continue = false;
+            _activeDebugFrame = null;
+            return;
+        }
+
         if (_liveExecutionHost == null)
         {
-            StartHotRun();
+            StartHotRun(StepMode.StepInto);
         }
         else
         {
             _liveExecutionHost.Context.CurrentStepMode = StepMode.StepInto;
             _liveExecutionHost.Context.State = ExecutionState.Running;
-            SetStatusMessage("Paso a paso por instrucciones (Step Into)");
         }
     }
 
     private void MenuStepOver_Click(object sender, RoutedEventArgs e)
     {
+        if (_activeDebugFrame != null && _liveExecutionHost != null)
+        {
+            _liveExecutionHost.Context.CurrentStepMode = StepMode.StepOver;
+            _liveExecutionHost.Context.StepOverFrameDepth = _liveExecutionHost.Context.CallStack.Count;
+            _liveExecutionHost.Context.State = ExecutionState.Running;
+            BookmarkMargin.ClearExecutionPointer();
+            SetStatusMessage("Paso a paso por procedimientos (Step Over)");
+            _activeDebugFrame.Continue = false;
+            _activeDebugFrame = null;
+            return;
+        }
+
         if (_liveExecutionHost == null)
         {
-            StartHotRun();
+            StartHotRun(StepMode.StepOver);
         }
         else
         {
             _liveExecutionHost.Context.CurrentStepMode = StepMode.StepOver;
+            _liveExecutionHost.Context.StepOverFrameDepth = _liveExecutionHost.Context.CallStack.Count;
             _liveExecutionHost.Context.State = ExecutionState.Running;
-            SetStatusMessage("Paso a paso por procedimientos (Step Over)");
         }
     }
 
@@ -3543,65 +4199,62 @@ public partial class MainWindow : Window
                 _liveExecutionHost = new LiveExecutionHost();
                 MainImmediateWindowControl?.AttachHost(_liveExecutionHost);
             }
-            if (_liveExecutionHost.Context.Breakpoints.Contains((file, line)))
+
+            bool added = BreakpointManager.Instance.ToggleBreakpoint(file, line);
+            if (added)
             {
-                _liveExecutionHost.Context.Breakpoints.Remove((file, line));
-                SetStatusMessage($"Punto de interrupción eliminado en línea {line}");
+                _liveExecutionHost.Context.Breakpoints.Add((file, line));
+                SetStatusMessage($"Punto de interrupci?n establecido en l?nea {line} ({Path.GetFileName(file)})");
             }
             else
             {
-                _liveExecutionHost.Context.Breakpoints.Add((file, line));
-                SetStatusMessage($"Punto de interrupción establecido en línea {line}");
+                _liveExecutionHost.Context.Breakpoints.Remove((file, line));
+                SetStatusMessage($"Punto de interrupci?n eliminado en l?nea {line} ({Path.GetFileName(file)})");
             }
         }
     }
 
     private void MenuClearAllBreakpoints_Click(object sender, RoutedEventArgs e)
     {
+        BreakpointManager.Instance.ClearAll();
         _liveExecutionHost?.Context.Breakpoints.Clear();
-        SetStatusMessage("Todos los puntos de interrupción eliminados.");
+        SetStatusMessage("Todos los puntos de interrupci?n eliminados.");
     }
-
-    public void StartHotRun()
+    public void StartHotRun(StepMode initialStepMode = StepMode.None)
     {
         try
         {
+            var primaryProject = _currentProjectGroup?.PrimaryProject ?? _currentProject;
+
             // 1. Determinar el formulario objetivo para ejecutar
             FormDesignModel? targetFormModel = null;
             string? targetFormCode = null;
 
-            // Opción A: La pestaña activa tiene un diseñador de formulario abierto
-            if (ActiveTab?.DesignModel != null)
+            // OpciÃ³n A: La pestaÃ±a activa tiene un diseÃ±ador de formulario abierto Y es un Formulario (.frm)
+            // (Si es un UserControl .ctl, no es ejecutable de forma independiente; debe ejecutarse el formulario de inicio del proyecto principal)
+            bool isActiveTabRunnableForm = ActiveTab?.DesignModel != null &&
+                                          ActiveTab.Document.FilePath?.EndsWith(".frm", StringComparison.OrdinalIgnoreCase) == true;
+
+            if (isActiveTabRunnableForm && ActiveTab != null)
             {
-                targetFormModel = ActiveTab.DesignModel;
-                targetFormCode = ActiveTab.Document.Text;
-            }
-            else
-            {
-                // Opción B: Buscar cualquier pestaña abierta que tenga diseñador de formulario
-                foreach (var item in DocumentsTabControl.Items)
+                bool belongsToPrimary = _currentProjectGroup == null ||
+                                        primaryProject == null ||
+                                        primaryProject.Forms.Any(f => string.Equals(f.AbsolutePath, ActiveTab.Document.FilePath, StringComparison.OrdinalIgnoreCase));
+
+                if (belongsToPrimary)
                 {
-                    if (item is EditorTabItem tab && tab.DesignModel != null)
-                    {
-                        targetFormModel = tab.DesignModel;
-                        targetFormCode = tab.Document.Text;
-                        string? tabDir = Path.GetDirectoryName(tab.Document.FilePath);
-                        if (!string.IsNullOrEmpty(tabDir))
-                        {
-                            FormDesignParser.ResolveControlPictures(targetFormModel, tabDir);
-                        }
-                        break;
-                    }
+                    targetFormModel = ActiveTab.DesignModel;
+                    targetFormCode = ActiveTab.Document.Text;
                 }
             }
 
-            // Opción C: Buscar en el proyecto actual el formulario de inicio o el primer formulario
-            if (targetFormModel == null && _currentProject != null)
+            // OpciÃ³n B: Si no, buscar en el proyecto principal su formulario de inicio o el primer formulario
+            if (targetFormModel == null && primaryProject != null)
             {
-                var startupFormRef = _currentProject.Startup;
+                var startupFormRef = primaryProject.Startup;
                 var formItem = !string.IsNullOrEmpty(startupFormRef)
-                    ? _currentProject.Forms.FirstOrDefault(f => f.Name.Equals(startupFormRef, StringComparison.OrdinalIgnoreCase) || Path.GetFileNameWithoutExtension(f.RelativePath).Equals(startupFormRef, StringComparison.OrdinalIgnoreCase))
-                    : _currentProject.Forms.FirstOrDefault();
+                    ? primaryProject.Forms.FirstOrDefault(f => f.Name.Equals(startupFormRef, StringComparison.OrdinalIgnoreCase) || Path.GetFileNameWithoutExtension(f.RelativePath).Equals(startupFormRef, StringComparison.OrdinalIgnoreCase))
+                    : primaryProject.Forms.FirstOrDefault();
 
                 if (formItem != null && !string.IsNullOrEmpty(formItem.AbsolutePath) && File.Exists(formItem.AbsolutePath))
                 {
@@ -3619,11 +4272,30 @@ public partial class MainWindow : Window
                 }
             }
 
+            // OpciÃ³n C: Buscar cualquier pestaÃ±a abierta que tenga diseÃ±ador de formulario .frm
+            if (targetFormModel == null)
+            {
+                foreach (var item in DocumentsTabControl.Items)
+                {
+                    if (item is EditorTabItem tab && tab.DesignModel != null && tab.Document.FilePath?.EndsWith(".frm", StringComparison.OrdinalIgnoreCase) == true)
+                    {
+                        targetFormModel = tab.DesignModel;
+                        targetFormCode = tab.Document.Text;
+                        string? tabDir = Path.GetDirectoryName(tab.Document.FilePath);
+                        if (!string.IsNullOrEmpty(tabDir))
+                        {
+                            FormDesignParser.ResolveControlPictures(targetFormModel, tabDir);
+                        }
+                        break;
+                    }
+                }
+            }
+
             if (targetFormModel == null)
             {
                 MessageBox.Show(
-                    "No se encontró ningún formulario para iniciar la ejecución en caliente.\nAbra un formulario o agregue uno al proyecto.",
-                    "Ejecución en Caliente",
+                    "No se encontrÃ³ ningÃºn formulario para iniciar la ejecuciÃ³n en caliente.\nAbra un formulario o agregue uno al proyecto principal.",
+                    "EjecuciÃ³n en Caliente",
                     MessageBoxButton.OK,
                     MessageBoxImage.Information);
                 return;
@@ -3641,10 +4313,60 @@ public partial class MainWindow : Window
 
             MainImmediateWindowControl?.AttachHost(_liveExecutionHost);
 
-            // 3. Indexar módulos estándar (.bas) del proyecto
-            if (_currentProject != null)
+            // Configurar depurador interactivo
+            _liveExecutionHost.Context.PauseHook = HandleDebuggerPause;
+            _liveExecutionHost.Context.CurrentStepMode = initialStepMode;
+            _liveExecutionHost.Context.Breakpoints.Clear();
+            foreach (var bp in BreakpointManager.Instance.GetAllBreakpoints())
             {
-                foreach (var mod in _currentProject.Modules)
+                _liveExecutionHost.Context.Breakpoints.Add(bp);
+            }
+            if (primaryProject != null)
+            {
+                _liveExecutionHost.Context.Dialect = primaryProject.Dialect;
+            }
+
+            // 3. Si estamos en un grupo (.vbg), cargar primero los proyectos secundarios como subprocesos / componentes
+            if (_currentProjectGroup != null)
+            {
+                foreach (var secProj in _currentProjectGroup.SecondaryProjects)
+                {
+                    // MÃ³dulos (.bas) del subproceso
+                    foreach (var mod in secProj.Modules)
+                    {
+                        if (!string.IsNullOrEmpty(mod.AbsolutePath) && File.Exists(mod.AbsolutePath))
+                        {
+                            string modCode = File.ReadAllText(mod.AbsolutePath);
+                            _liveExecutionHost.LoadSourceCode(modCode, mod.Name);
+                        }
+                    }
+
+                    // Clases (.cls) del subproceso
+                    foreach (var cls in secProj.Classes)
+                    {
+                        if (!string.IsNullOrEmpty(cls.AbsolutePath) && File.Exists(cls.AbsolutePath))
+                        {
+                            var doc = SafeFileStorage.LoadDocument(cls.AbsolutePath);
+                            _liveExecutionHost.LoadSourceCode(doc.Text, cls.Name);
+                        }
+                    }
+
+                    // UserControls (.ctl) del subproceso
+                    foreach (var uc in secProj.UserControls)
+                    {
+                        if (!string.IsNullOrEmpty(uc.AbsolutePath) && File.Exists(uc.AbsolutePath))
+                        {
+                            var doc = SafeFileStorage.LoadDocument(uc.AbsolutePath);
+                            _liveExecutionHost.LoadSourceCode(doc.Text, uc.Name);
+                        }
+                    }
+                }
+            }
+
+            // MÃ³dulos, clases y UserControls del proyecto principal
+            if (primaryProject != null)
+            {
+                foreach (var mod in primaryProject.Modules)
                 {
                     if (!string.IsNullOrEmpty(mod.AbsolutePath) && File.Exists(mod.AbsolutePath))
                     {
@@ -3653,8 +4375,16 @@ public partial class MainWindow : Window
                     }
                 }
 
-                // Cargar UserControls (.ctl) del proyecto en el host
-                foreach (var uc in _currentProject.UserControls)
+                foreach (var cls in primaryProject.Classes)
+                {
+                    if (!string.IsNullOrEmpty(cls.AbsolutePath) && File.Exists(cls.AbsolutePath))
+                    {
+                        var doc = SafeFileStorage.LoadDocument(cls.AbsolutePath);
+                        _liveExecutionHost.LoadSourceCode(doc.Text, cls.Name);
+                    }
+                }
+
+                foreach (var uc in primaryProject.UserControls)
                 {
                     if (!string.IsNullOrEmpty(uc.AbsolutePath) && File.Exists(uc.AbsolutePath))
                     {
@@ -3664,7 +4394,7 @@ public partial class MainWindow : Window
                 }
             }
 
-            // 4. Cargar el código del formulario en el host
+            // 4. Cargar el cÃ³digo del formulario en el host
             if (!string.IsNullOrEmpty(targetFormCode))
             {
                 _liveExecutionHost.LoadSourceCode(targetFormCode, targetFormModel.Name);
@@ -3689,10 +4419,10 @@ public partial class MainWindow : Window
                 {
                     0 => MessageBoxButton.OK,          // vbOKOnly
                     1 => MessageBoxButton.OKCancel,    // vbOKCancel
-                    2 => MessageBoxButton.OKCancel,    // vbAbortRetryIgnore (fallback estándar en WPF)
+                    2 => MessageBoxButton.OKCancel,    // vbAbortRetryIgnore (fallback estÃ¡ndar en WPF)
                     3 => MessageBoxButton.YesNoCancel, // vbYesNoCancel
                     4 => MessageBoxButton.YesNo,       // vbYesNo
-                    5 => MessageBoxButton.OKCancel,    // vbRetryCancel (fallback estándar en WPF)
+                    5 => MessageBoxButton.OKCancel,    // vbRetryCancel (fallback estÃ¡ndar en WPF)
                     _ => MessageBoxButton.OK
                 };
 
@@ -3715,9 +4445,9 @@ public partial class MainWindow : Window
             };
 
             // 6. Instanciar la ventana en vivo (LiveFormWindow)
-            Func<string, FormDesignModel?>? ucResolver = _currentProject != null
-                ? typeName => _currentProject.GetUserControlDesignModel(typeName)
-                : null;
+            Func<string, FormDesignModel?>? ucResolver = _currentProjectGroup != null
+                ? typeName => _currentProjectGroup.GetUserControlDesignModel(typeName)
+                : (primaryProject != null ? typeName => primaryProject.GetUserControlDesignModel(typeName) : null);
 
             _liveFormWindow = new LiveFormWindow(targetFormModel, _liveExecutionHost, targetFormCode, ucResolver)
             {
@@ -3737,7 +4467,15 @@ public partial class MainWindow : Window
             MenuRunStop.IsEnabled = true;
             BtnToolbarRunStop.IsEnabled = true;
 
-            SetStatusMessage($"Ejecutando en caliente: {targetFormModel.Name}");
+            if (_currentProjectGroup != null)
+            {
+                string secNames = string.Join(", ", _currentProjectGroup.SecondaryProjects.Select(p => $"'{p.Name}'"));
+                SetStatusMessage($"Ejecutando en caliente: Proyecto Principal '{primaryProject?.Name}' (Inicio) con subproceso {secNames}");
+            }
+            else
+            {
+                SetStatusMessage($"Ejecutando en caliente: {targetFormModel.Name}");
+            }
             ShowBottomTab("Immediate");
 
             // 8. Mostrar la ventana y arrancar
@@ -3745,8 +4483,8 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            AppLogger.Error($"Error al iniciar ejecución en caliente: {ex.Message}", ex);
-            MessageBox.Show($"Error al iniciar la ejecución en caliente:\n{ex.Message}", "Error de Ejecución", MessageBoxButton.OK, MessageBoxImage.Error);
+            AppLogger.Error($"Error al iniciar ejecuciÃ³n en caliente: {ex.Message}", ex);
+            MessageBox.Show($"Error al iniciar la ejecuciÃ³n en caliente:\n{ex.Message}", "Error de EjecuciÃ³n", MessageBoxButton.OK, MessageBoxImage.Error);
             OnLiveExecutionStopped();
         }
     }
@@ -3765,6 +4503,12 @@ public partial class MainWindow : Window
 
     private void OnLiveExecutionStopped()
     {
+        BookmarkMargin.ClearExecutionPointer();
+        if (_activeDebugFrame != null)
+        {
+            _activeDebugFrame.Continue = false;
+            _activeDebugFrame = null;
+        }
         if (_liveExecutionHost != null)
         {
             _liveExecutionHost.Context.State = ExecutionState.Stopped;

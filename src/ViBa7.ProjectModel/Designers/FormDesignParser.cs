@@ -29,7 +29,7 @@ public static class FormDesignParser
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly Regex PropertyAssignmentRegex = new(
-        @"^\s*([a-zA-Z0-9_]+)\s*=\s*(.*)$",
+        @"^\s*([a-zA-Z0-9_.\(\)]+)\s*=\s*(.*)$",
         RegexOptions.Compiled);
 
     /// <summary>
@@ -88,6 +88,10 @@ public static class FormDesignParser
 
             if (trimmed.StartsWith("Object", StringComparison.OrdinalIgnoreCase) && trimmed.Contains('='))
             {
+                if (!model.ObjectDeclarations.Any(o => string.Equals(o, trimmed, StringComparison.OrdinalIgnoreCase)))
+                {
+                    model.ObjectDeclarations.Add(trimmed);
+                }
                 TryRegisterFormObjectReference(trimmed);
                 lineIdx++;
                 continue;
@@ -106,8 +110,8 @@ public static class FormDesignParser
         bool insideRootForm = false;
         bool rootFormEnded = false;
 
-        // Estado de BeginProperty
-        bool insideBeginProperty = false;
+        // Estado de BeginProperty (con soporte de anidamiento para Toolbar Buttons, ListImages, ColumnHeaders, etc.)
+        int beginPropertyDepth = 0;
         string? currentPropertyName = null;
         var currentPropertyLines = new List<string>();
 
@@ -128,46 +132,71 @@ public static class FormDesignParser
                 continue;
             }
 
-            // Manejo de bloques BeginProperty ... EndProperty
-            if (insideBeginProperty)
+            // Manejo de bloques BeginProperty ... EndProperty (incluyendo bloques anidados)
+            if (beginPropertyDepth > 0)
             {
+                if (controlStack.Count > 0)
+                {
+                    controlStack.Peek().RawControlLines.Add(line);
+                }
+
+                if (BeginPropertyRegex.IsMatch(trimmed))
+                {
+                    beginPropertyDepth++;
+                    currentPropertyLines.Add(line);
+                    continue;
+                }
+
                 if (EndPropertyRegex.IsMatch(trimmed))
                 {
-                    insideBeginProperty = false;
+                    beginPropertyDepth--;
                     currentPropertyLines.Add(line);
 
-                    // Procesar la propiedad completada (especialmente Font)
-                    if (string.Equals(currentPropertyName, "Font", StringComparison.OrdinalIgnoreCase))
+                    if (beginPropertyDepth == 0)
                     {
-                        var fontDesc = ParseFontBlock(currentPropertyLines);
+                        // Procesar la propiedad de nivel superior completada (especialmente Font e IconFont)
+                        if (currentPropertyName != null && (string.Equals(currentPropertyName, "Font", StringComparison.OrdinalIgnoreCase) ||
+                                                             currentPropertyName.EndsWith("Font", StringComparison.OrdinalIgnoreCase) ||
+                                                             currentPropertyName.Contains("Font", StringComparison.OrdinalIgnoreCase)))
+                        {
+                            var fontDesc = ParseFontBlock(currentPropertyLines);
+                            if (controlStack.Count > 0)
+                            {
+                                var ctrl = controlStack.Peek();
+                                ctrl.SetFontProperty(currentPropertyName, fontDesc);
+                                if (string.Equals(currentPropertyName, "Font", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    ctrl.Font = fontDesc;
+                                }
+                            }
+                            else if (insideRootForm)
+                            {
+                                if (string.Equals(currentPropertyName, "Font", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    model.Font = fontDesc;
+                                }
+                            }
+                        }
+
+                        var propItem = new FormPropertyItem
+                        {
+                            Name = currentPropertyName ?? "Property",
+                            IsBeginProperty = true,
+                            RawPropertyLines = new List<string>(currentPropertyLines)
+                        };
+
                         if (controlStack.Count > 0)
                         {
-                            controlStack.Peek().Font = fontDesc;
+                            controlStack.Peek().CustomProperties.Add(propItem);
                         }
                         else if (insideRootForm)
                         {
-                            model.Font = fontDesc;
+                            model.CustomProperties.Add(propItem);
                         }
-                    }
 
-                    var propItem = new FormPropertyItem
-                    {
-                        Name = currentPropertyName ?? "Property",
-                        IsBeginProperty = true,
-                        RawPropertyLines = new List<string>(currentPropertyLines)
-                    };
-
-                    if (controlStack.Count > 0)
-                    {
-                        controlStack.Peek().CustomProperties.Add(propItem);
+                        currentPropertyName = null;
+                        currentPropertyLines.Clear();
                     }
-                    else if (insideRootForm)
-                    {
-                        model.CustomProperties.Add(propItem);
-                    }
-
-                    currentPropertyName = null;
-                    currentPropertyLines.Clear();
                     continue;
                 }
 
@@ -178,10 +207,14 @@ public static class FormDesignParser
             var beginPropertyMatch = BeginPropertyRegex.Match(trimmed);
             if (beginPropertyMatch.Success)
             {
-                insideBeginProperty = true;
+                beginPropertyDepth = 1;
                 currentPropertyName = beginPropertyMatch.Groups[1].Value.Trim();
                 currentPropertyLines.Clear();
                 currentPropertyLines.Add(line);
+                if (controlStack.Count > 0)
+                {
+                    controlStack.Peek().RawControlLines.Add(line);
+                }
                 continue;
             }
 
@@ -302,6 +335,7 @@ public static class FormDesignParser
                 if (controlStack.Count > 0)
                 {
                     var activeCtrl = controlStack.Peek();
+                    activeCtrl.RawControlLines.Add(line);
                     ApplyControlProperty(activeCtrl, propName, cleanVal, valStr);
                     activeCtrl.CustomProperties.Add(propItem);
                 }
@@ -543,6 +577,15 @@ public static class FormDesignParser
                                         cleanVal.Equals("1", StringComparison.OrdinalIgnoreCase) ||
                                         cleanVal.Equals("True", StringComparison.OrdinalIgnoreCase);
                 break;
+            default:
+                if ((name.EndsWith("Font", StringComparison.OrdinalIgnoreCase) || name.Contains("Font", StringComparison.OrdinalIgnoreCase)) &&
+                    !string.IsNullOrWhiteSpace(cleanVal))
+                {
+                    var existingF = ctrl.GetFontProperty(name) ?? new FormFontDescription();
+                    existingF.Name = cleanVal;
+                    ctrl.SetFontProperty(name, existingF);
+                }
+                break;
         }
     }
 
@@ -686,11 +729,86 @@ public static class FormDesignParser
     }
 
     /// <summary>
-    /// Resuelve y carga en memoria las imágenes binarias (.frx, .ctx o rutas relativas) asociadas al formulario o UserControl y sus controles.
+    /// Resuelve un bloque binario arbitrario (.frx / .ctx) para propiedades de estado ActiveX o PropertyBag binario.
+    /// </summary>
+    public static byte[]? ResolveRawBinaryBlock(string? reference, string basePath, bool isUserControl, string modelName, byte[]? cachedFrxBytes = null)
+    {
+        if (string.IsNullOrWhiteSpace(reference))
+        {
+            return null;
+        }
+
+        if (!Resources.FrxResourceFile.ParseReference(reference, out string resFileName, out int offset))
+        {
+            return null;
+        }
+
+        if (cachedFrxBytes != null && cachedFrxBytes.Length > 0)
+        {
+            return Resources.FrxResourceFile.ReadRawBlock(cachedFrxBytes, offset);
+        }
+
+        if (string.IsNullOrWhiteSpace(basePath))
+        {
+            return null;
+        }
+
+        string defaultExt = isUserControl ? $"{modelName}.ctx" : $"{modelName}.frx";
+        string targetRes = string.IsNullOrEmpty(resFileName) ? defaultExt : resFileName;
+        string resPath = Path.Combine(basePath, targetRes);
+
+        if (!File.Exists(resPath))
+        {
+            string altPath = Path.Combine(basePath, defaultExt);
+            if (File.Exists(altPath))
+            {
+                resPath = altPath;
+            }
+            else
+            {
+                try
+                {
+                    string? match = Directory.GetFiles(basePath)
+                        .FirstOrDefault(f => string.Equals(Path.GetFileName(f), targetRes, StringComparison.OrdinalIgnoreCase) ||
+                                             string.Equals(Path.GetFileName(f), defaultExt, StringComparison.OrdinalIgnoreCase));
+                    if (match != null) resPath = match;
+                }
+                catch { }
+            }
+        }
+
+        return File.Exists(resPath) ? Resources.FrxResourceFile.ReadRawBlock(resPath, offset) : null;
+    }
+
+    /// <summary>
+    /// Resuelve y carga en memoria las imágenes binarias y streams de estado ActiveX (.frx, .ctx o rutas relativas)
+    /// asociados al formulario o UserControl y sus controles.
     /// </summary>
     public static void ResolveControlPictures(FormDesignModel model, string basePath)
     {
         if (model == null || string.IsNullOrWhiteSpace(basePath)) return;
+
+        // 0. Preservar en memoria los bytes originales del archivo .frx / .ctx acompañante para garantizar round-trip sin desfasar offsets
+        if (model.OriginalFrxBytes == null)
+        {
+            try
+            {
+                string defaultCompanion = model.IsUserControl ? $"{model.Name}.ctx" : $"{model.Name}.frx";
+                string companionPath = Path.Combine(basePath, defaultCompanion);
+                if (!File.Exists(companionPath) && Directory.Exists(basePath))
+                {
+                    string? match = Directory.GetFiles(basePath)
+                        .FirstOrDefault(f => string.Equals(Path.GetFileName(f), defaultCompanion, StringComparison.OrdinalIgnoreCase));
+                    if (match != null) companionPath = match;
+                }
+
+                if (File.Exists(companionPath))
+                {
+                    model.OriginalFrxBytes = File.ReadAllBytes(companionPath);
+                }
+            }
+            catch { }
+        }
 
         // 1. Imagen del formulario o UserControl (fondos, texturas y skins de controles como JColCombo)
         if (model.PictureData == null && !string.IsNullOrEmpty(model.Picture))
@@ -722,19 +840,43 @@ public static class FormDesignParser
                 ctrl.DisabledPictureData = ResolveBinaryResource(ctrl.DisabledPicture, basePath, model.IsUserControl, model.Name);
             }
 
-            // Si el control no tiene Picture pero tiene una propiedad de skin/textura en .ctx/.frx
-            if (ctrl.PictureData == null)
+            // 3. Resolver propiedades binarias y estado de persistencia de instancia ActiveX (ej. Object.zyx = "Form1.frx":0000)
+            foreach (var prop in ctrl.CustomProperties)
             {
-                foreach (var prop in ctrl.CustomProperties)
+                if (prop.IsBeginProperty || string.IsNullOrWhiteSpace(prop.Value)) continue;
+
+                string propUpper = prop.Name.ToUpperInvariant();
+                if (ctrl.PictureData == null &&
+                    (candidateSkinProps.Contains(propUpper) || propUpper.EndsWith("PICTURE") || propUpper.EndsWith("IMAGE")))
                 {
-                    string propUpper = prop.Name.ToUpperInvariant();
-                    if (candidateSkinProps.Contains(propUpper) || propUpper.EndsWith("PICTURE") || propUpper.EndsWith("IMAGE"))
+                    var data = ResolveBinaryResource(prop.Value, basePath, model.IsUserControl, model.Name);
+                    if (data != null && data.Length > 0)
                     {
-                        var data = ResolveBinaryResource(prop.Value, basePath, model.IsUserControl, model.Name);
-                        if (data != null && data.Length > 0)
+                        ctrl.PictureData = data;
+                    }
+                }
+
+                // Si el valor contiene una referencia a .frx o .ctx, extraer el bloque binario para persistencia ActiveX
+                if ((prop.Value.Contains(".frx", StringComparison.OrdinalIgnoreCase) ||
+                     prop.Value.Contains(".ctx", StringComparison.OrdinalIgnoreCase) ||
+                     prop.Value.Contains(':')) &&
+                    Resources.FrxResourceFile.ParseReference(prop.Value, out _, out _))
+                {
+                    var rawBlock = ResolveRawBinaryBlock(prop.Value, basePath, model.IsUserControl, model.Name, model.OriginalFrxBytes);
+                    if (rawBlock != null)
+                    {
+                        ctrl.BinaryProperties[prop.Name] = rawBlock;
+
+                        bool isStateProp = prop.Name.StartsWith("Object.", StringComparison.OrdinalIgnoreCase) ||
+                                           prop.Name.Equals("Custom", StringComparison.OrdinalIgnoreCase) ||
+                                           prop.Name.Equals("BinaryData", StringComparison.OrdinalIgnoreCase) ||
+                                           (!ctrl.IsIntrinsic && ctrl.ActiveXStateBlob == null &&
+                                            !propUpper.EndsWith("PICTURE") && !propUpper.EndsWith("ICON"));
+
+                        if (isStateProp && ctrl.ActiveXStateBlob == null)
                         {
-                            ctrl.PictureData = data;
-                            break;
+                            ctrl.ActiveXStateBlob = rawBlock;
+                            ctrl.ActiveXStatePropertyName = prop.Name;
                         }
                     }
                 }

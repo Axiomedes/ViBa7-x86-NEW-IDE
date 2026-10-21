@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Windows;
@@ -15,6 +15,7 @@ using ViBa7.IDE.Logging;
 using ViBa7.ProjectModel.Navigation;
 using ViBa7.ProjectModel.Settings;
 using ViBa7.IDE.Editor.IntelliSense;
+using ViBa7.ProjectModel.IntelliSense;
 
 namespace ViBa7.IDE.Editor;
 
@@ -28,6 +29,7 @@ public class EditorTabItem : TabItem, INotifyPropertyChanged
     public BranchLinesRenderer BranchLinesRenderer { get; }
     public EndOfLineDetailsRenderer EndOfLineDetailsRenderer { get; }
     public BookmarkMargin BookmarkMargin { get; }
+    public DebuggerLineRenderer DebuggerLineRenderer { get; }
     private readonly ComboBox _cmbProcedures;
 
     // Soporte para Diseñador Visual Dual (Código F7 / Diseñador Shift+F7)
@@ -86,8 +88,10 @@ public class EditorTabItem : TabItem, INotifyPropertyChanged
         BranchLinesRenderer = new BranchLinesRenderer(Editor);
         EndOfLineDetailsRenderer = new EndOfLineDetailsRenderer(Editor);
         BookmarkMargin = new BookmarkMargin(Editor, document.FilePath);
+        DebuggerLineRenderer = new DebuggerLineRenderer(Editor, document.FilePath);
 
         Editor.TextArea.TextView.BackgroundRenderers.Add(CurrentLineHighlighter);
+        Editor.TextArea.TextView.BackgroundRenderers.Add(DebuggerLineRenderer);
         Editor.TextArea.TextView.BackgroundRenderers.Add(BranchLinesRenderer);
         Editor.TextArea.TextView.BackgroundRenderers.Add(EndOfLineDetailsRenderer);
 
@@ -502,6 +506,7 @@ public class EditorTabItem : TabItem, INotifyPropertyChanged
     {
         if (DesignModel != null)
         {
+            DesignSurface?.SyncAllActiveXHostsToModel();
             if (!string.IsNullOrWhiteSpace(Document.FilePath))
             {
                 ViBa7.ProjectModel.Resources.FrxResourceFile.EnsureFrxResourcesSaved(DesignModel, Document.FilePath);
@@ -894,11 +899,46 @@ public class EditorTabItem : TabItem, INotifyPropertyChanged
         DesignSurface.Focus();
     }
 
+    private static (string eventName, string paramSignature) GetControlDefaultEventSignature(FormDesignerControl ctrl)
+    {
+        string eventName = "Click";
+        IReadOnlyList<VbParameterInfo>? eventParams = null;
+
+        if (VbControlMemberCatalog.TryGetDefaultEvent(ctrl.TypeName, out var defEvent, out var parameters))
+        {
+            eventName = defEvent;
+            eventParams = parameters;
+        }
+        else
+        {
+            eventName = GetDefaultEventName(ctrl.TypeName);
+        }
+
+        var paramParts = new List<string>();
+        if (ctrl.Index.HasValue)
+        {
+            paramParts.Add("Index As Integer");
+        }
+
+        if (eventParams != null)
+        {
+            foreach (var p in eventParams)
+            {
+                string byRefPrefix = p.IsByRef ? "" : "ByVal ";
+                string typeSuffix = !string.IsNullOrWhiteSpace(p.Type) ? $" As {p.Type}" : "";
+                paramParts.Add($"{byRefPrefix}{p.Name}{typeSuffix}");
+            }
+        }
+
+        string paramSignature = $"({string.Join(", ", paramParts)})";
+        return (eventName, paramSignature);
+    }
+
     private void NavigateToControlEvent(FormDesignerControl ctrl)
     {
         SwitchToCodeView();
 
-        string eventName = GetDefaultEventName(ctrl.TypeName);
+        var (eventName, paramSignature) = GetControlDefaultEventSignature(ctrl);
         string procName = $"{ctrl.Name}_{eventName}";
         string pattern = $"Sub {procName}";
 
@@ -915,7 +955,7 @@ public class EditorTabItem : TabItem, INotifyPropertyChanged
                     string updated = System.Text.RegularExpressions.Regex.Replace(
                         lines[i],
                         @"(?i)\bSub\s+" + System.Text.RegularExpressions.Regex.Escape(procName) + @"(?:\s*\(\s*\))?",
-                        $"Sub {procName}(Index As Integer)");
+                        $"Sub {procName}{paramSignature}");
 
                     if (updated != lines[i])
                     {
@@ -943,11 +983,10 @@ public class EditorTabItem : TabItem, INotifyPropertyChanged
         }
         else
         {
-            string parameters = ctrl.Index.HasValue ? "(Index As Integer)" : "()";
-            string codeSnippet = $"\r\nPrivate Sub {procName}{parameters}\r\n    \r\nEnd Sub\r\n";
+            string codeSnippet = $"\r\nPrivate Sub {procName}{paramSignature}\r\n    \r\nEnd Sub\r\n";
             int offset = Editor.Document.TextLength;
             Editor.Document.Insert(offset, codeSnippet);
-            Editor.CaretOffset = offset + $"\r\nPrivate Sub {procName}{parameters}\r\n    ".Length;
+            Editor.CaretOffset = offset + $"\r\nPrivate Sub {procName}{paramSignature}\r\n    ".Length;
             Editor.ScrollToLine(Editor.Document.LineCount);
         }
 
@@ -1048,6 +1087,11 @@ public class EditorTabItem : TabItem, INotifyPropertyChanged
 
     private static string GetDefaultEventName(string typeName)
     {
+        if (VbControlMemberCatalog.TryGetDefaultEvent(typeName, out var defEvent, out _))
+        {
+            return defEvent;
+        }
+
         if (typeName.EndsWith("CommandButton", StringComparison.OrdinalIgnoreCase)) return "Click";
         if (typeName.EndsWith("TextBox", StringComparison.OrdinalIgnoreCase)) return "Change";
         if (typeName.EndsWith("Timer", StringComparison.OrdinalIgnoreCase)) return "Timer";

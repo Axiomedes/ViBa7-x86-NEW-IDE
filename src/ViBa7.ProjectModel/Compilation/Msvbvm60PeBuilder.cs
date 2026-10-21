@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
@@ -19,7 +19,9 @@ public record Vb6CompileOptions(
     int RevisionVersion = 0,
     string CompanyName = "",
     string FileDescription = "",
-    string LegalCopyright = ""
+    string LegalCopyright = "",
+    bool GenerateSxSManifest = true,
+    IReadOnlyList<ViBa7.ProjectModel.ActiveX.OcxLibraryInfo>? ActiveXComponents = null
 );
 
 /// <summary>
@@ -133,12 +135,14 @@ public class Msvbvm60PeBuilder
         uint objectArrayVa = DefaultImageBase + SectionDataRva + 0x0140;
 
         // A. Escribir VBHeader (108 bytes) en offset 0
+        ushort extCount = (ushort)(options.ActiveXComponents?.Count ?? 0);
         Vb6BinaryStructures.WriteVbHeader(
             dataBw,
             lpProjInfoVa: projInfoVa,
             lpSubMainVa: 0,
             dwLcid: 0x00000C0A, // Español (o 0x0409)
-            formCount: (ushort)formsList.Count);
+            formCount: (ushort)formsList.Count,
+            externalComponentCount: extCount);
 
         // Padding hasta 0x0080
         dataSection.PadToAlignment(128);

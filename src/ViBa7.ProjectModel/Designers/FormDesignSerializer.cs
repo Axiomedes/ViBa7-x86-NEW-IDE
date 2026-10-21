@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -31,6 +31,13 @@ public static class FormDesignSerializer
         else
         {
             sb.AppendLine("VERSION 5.00");
+        }
+
+        // 1b. Declaraciones Object = "{GUID}#Major.Minor#0"; "Archivo.ocx" (preservadas + deducidas de controles ActiveX activos)
+        var objectLines = CollectObjectDeclarations(model);
+        foreach (var objLine in objectLines)
+        {
+            sb.AppendLine(objLine);
         }
 
         // 2. Inicio del formulario raíz
@@ -136,7 +143,7 @@ public static class FormDesignSerializer
         // Bloque Font
         if (model.Font != null)
         {
-            SerializeFont(sb, model.Font, indentLevel);
+            SerializeFont(sb, "Font", model.Font, indentLevel);
             writtenProps.Add("Font");
         }
 
@@ -193,7 +200,7 @@ public static class FormDesignSerializer
         WriteProp("Left", ctrl.Left.ToString(CultureInfo.InvariantCulture));
 
         if (ctrl.TabIndex.HasValue) WriteProp("TabIndex", ctrl.TabIndex.Value.ToString(CultureInfo.InvariantCulture));
-        if (ctrl.TabStop.HasValue) WriteProp("TabStop", ctrl.TabStop.Value ? "0  'False" : "-1  'True");
+        if (ctrl.TabStop.HasValue) WriteProp("TabStop", ctrl.TabStop.Value ? "-1  'True" : "0  'False");
         if (!ctrl.Enabled) WriteProp("Enabled", "0  'False");
         if (!ctrl.Visible) WriteProp("Visible", "0  'False");
 
@@ -219,11 +226,22 @@ public static class FormDesignSerializer
             sb.AppendLine($"{propIndent}' [VB7] PictureAlignment = {(int)ctrl.PictureAlignment}");
         }
 
-        // Font si aplica
-        if (ctrl.Font != null)
+        // Font si aplica (solo si es intrínseco o si fue declarado explícitamente)
+        if (ctrl.Font != null && (ctrl.IsIntrinsic || ctrl.FontProperties.ContainsKey("Font") || ctrl.CustomProperties.Any(p => p.Name.Equals("Font", StringComparison.OrdinalIgnoreCase))))
         {
-            SerializeFont(sb, ctrl.Font, indentLevel + 1);
+            SerializeFont(sb, "Font", ctrl.Font, indentLevel + 1);
             writtenProps.Add("Font");
+        }
+
+        // Otras fuentes nombradas (ej. IconFont, CaptionFont)
+        foreach (var (fName, fDesc) in ctrl.FontProperties)
+        {
+            if (fName.Equals("Font", StringComparison.OrdinalIgnoreCase)) continue;
+            if (fDesc != null)
+            {
+                SerializeFont(sb, fName, fDesc, indentLevel + 1);
+                writtenProps.Add(fName);
+            }
         }
 
         // Propiedades conservadas en CustomProperties que no hayan sido escritas
@@ -249,6 +267,10 @@ public static class FormDesignSerializer
                 {
                     val = FormDesignerControl.TwipsToHiMetric(ctrl.Height).ToString(CultureInfo.InvariantCulture);
                 }
+                else
+                {
+                    val = FormatCustomPropertyValueForFrm(val, prop.TrailingComment);
+                }
                 WriteProp(prop.Name, val, prop.TrailingComment);
             }
         }
@@ -273,12 +295,12 @@ public static class FormDesignSerializer
         sb.AppendLine($"{indent}End");
     }
 
-    private static void SerializeFont(StringBuilder sb, FormFontDescription font, int indentLevel)
+    private static void SerializeFont(StringBuilder sb, string propertyName, FormFontDescription font, int indentLevel)
     {
         string indent = new string(' ', indentLevel * 3);
         string propIndent = new string(' ', (indentLevel + 1) * 3);
 
-        sb.AppendLine($"{indent}BeginProperty Font ");
+        sb.AppendLine($"{indent}BeginProperty {propertyName} ");
         sb.AppendLine($"{propIndent}{"Name".PadRight(16)}=   \"{font.Name}\"");
         sb.AppendLine($"{propIndent}{"Size".PadRight(16)}=   {font.Size.ToString("0.##", CultureInfo.InvariantCulture)}");
         sb.AppendLine($"{propIndent}{"Charset".PadRight(16)}=   {font.Charset}");
@@ -340,5 +362,94 @@ public static class FormDesignSerializer
         }
 
         sb.AppendLine($"{indent}End");
+    }
+
+    private static List<string> CollectObjectDeclarations(FormDesignModel model)
+    {
+        var result = new List<string>();
+        foreach (var existing in model.ObjectDeclarations)
+        {
+            string trimmed = existing.Trim();
+            if (!string.IsNullOrEmpty(trimmed) &&
+                !result.Any(r => string.Equals(r, trimmed, StringComparison.OrdinalIgnoreCase)))
+            {
+                result.Add(trimmed);
+            }
+        }
+
+        foreach (var ctrl in model.GetAllControls())
+        {
+            if (ctrl.IsIntrinsic) continue;
+
+            if (IntelliSense.VbControlMemberCatalog.TryGetOcxObjectHeaderForControl(ctrl.TypeName, out string headerLine) &&
+                !string.IsNullOrWhiteSpace(headerLine))
+            {
+                // Verificar si ya existe una declaración para la misma GUID o el mismo archivo .ocx
+                int openBrace = headerLine.IndexOf('{');
+                int closeBrace = headerLine.IndexOf('}');
+                string? guid = (openBrace >= 0 && closeBrace > openBrace)
+                    ? headerLine.Substring(openBrace, closeBrace - openBrace + 1)
+                    : null;
+
+                int semiIdx = headerLine.IndexOf(';');
+                string? filePart = semiIdx >= 0 ? headerLine[(semiIdx + 1)..].Trim().Trim('"') : null;
+
+                bool alreadyExists = result.Any(r =>
+                    string.Equals(r, headerLine, StringComparison.OrdinalIgnoreCase) ||
+                    (!string.IsNullOrEmpty(guid) && r.Contains(guid, StringComparison.OrdinalIgnoreCase)) ||
+                    (!string.IsNullOrEmpty(filePart) && r.EndsWith($"\"{filePart}\"", StringComparison.OrdinalIgnoreCase)));
+
+                if (!alreadyExists)
+                {
+                    result.Add(headerLine);
+                }
+            }
+        }
+
+        return result;
+    }
+
+    private static string FormatCustomPropertyValueForFrm(string rawVal, string? trailingComment)
+    {
+        if (string.IsNullOrEmpty(rawVal)) return "\"\"";
+        string trimmed = rawVal.Trim();
+
+        // Si ya está entrecomillado o es una referencia a archivo binario ("Form1.frx":0000)
+        if (trimmed.StartsWith('"'))
+        {
+            return trimmed;
+        }
+
+        // Si es valor hexadecimal (&H...)
+        if (trimmed.StartsWith("&H", StringComparison.OrdinalIgnoreCase))
+        {
+            return trimmed;
+        }
+
+        // Si es booleano textual puro (True / False) proveniente de reflexión IDispatch
+        if (trimmed.Equals("True", StringComparison.OrdinalIgnoreCase))
+        {
+            return string.IsNullOrEmpty(trailingComment) ? "-1  'True" : "-1";
+        }
+        if (trimmed.Equals("False", StringComparison.OrdinalIgnoreCase))
+        {
+            return string.IsNullOrEmpty(trailingComment) ? "0   'False" : "0";
+        }
+
+        // Si es número entero o punto flotante
+        if (long.TryParse(trimmed, NumberStyles.Integer, CultureInfo.InvariantCulture, out _) ||
+            double.TryParse(trimmed, NumberStyles.Float, CultureInfo.InvariantCulture, out _))
+        {
+            return trimmed;
+        }
+
+        // Si contiene referencia a .frx/.ctx sin comillas iniciales
+        if (Resources.FrxResourceFile.ParseReference(trimmed, out string refFile, out int refOffset) && !string.IsNullOrEmpty(refFile))
+        {
+            return Resources.FrxResourceFile.FormatReference(refFile, refOffset);
+        }
+
+        // Cualquier otro texto literal debe ir entre comillas en sintaxis .frm de VB6
+        return $"\"{trimmed}\"";
     }
 }

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
 
@@ -58,10 +58,24 @@ public class VbStatementInterpreter
                 continue;
             }
 
-            // Comprobar breakpoints activos
-            if (sourceFile != null && _context.Breakpoints.Contains((sourceFile, currentLine)))
+            // Comprobar breakpoints activos o modo paso a paso
+            bool hasBp = _context.HasBreakpoint(sourceFile, currentLine);
+            bool isStepping = _context.CurrentStepMode == StepMode.StepInto ||
+                              (_context.CurrentStepMode == StepMode.StepOver && _context.CallStack.Count <= _context.StepOverFrameDepth);
+
+            if ((hasBp || isStepping) && _context.State != ExecutionState.Stopped)
             {
-                _context.TriggerBreakpoint(sourceFile, currentLine);
+                if (_context.CurrentFrame != null)
+                {
+                    _context.CurrentFrame.CurrentLineNumber = currentLine;
+                }
+
+                _context.TriggerBreakpoint(sourceFile ?? string.Empty, currentLine);
+
+                if (_context.State == ExecutionState.Stopped)
+                {
+                    return FlowSignal.ExitSub;
+                }
             }
 
             // Ejecutar sentencia con captura de errores según On Error
@@ -244,20 +258,76 @@ public class VbStatementInterpreter
             return FlowSignal.Normal;
         }
 
-        // 13. DoEvents
+        // 13. RaiseEvent
+        if (line.StartsWith("RaiseEvent ", StringComparison.OrdinalIgnoreCase))
+        {
+            ExecuteRaiseEvent(line["RaiseEvent ".Length..].Trim());
+            return FlowSignal.Normal;
+        }
+
+        // 14. DoEvents
         if (line.Equals("DoEvents", StringComparison.OrdinalIgnoreCase))
         {
             _context.DoEvents();
             return FlowSignal.Normal;
         }
 
-        // 14. Invocación directa de método o subrutina sin Call: ej. `MsgBox "Hola"` o `MiSub 1, 2`
+        // 15. Invocación directa de método o subrutina sin Call: ej. `MsgBox "Hola"` o `MiSub 1, 2`
         ExecuteSubInvocation(line);
 
         return FlowSignal.Normal;
     }
 
     #region Ejecución de Sentencias Específicas
+
+    private void ExecuteRaiseEvent(string rest)
+    {
+        if (string.IsNullOrWhiteSpace(rest)) return;
+
+        string eventName;
+        string rawArgs = string.Empty;
+
+        int openParen = rest.IndexOf('(');
+        int firstSpace = rest.IndexOf(' ');
+
+        if (openParen > 0 && (firstSpace < 0 || openParen < firstSpace))
+        {
+            eventName = rest[..openParen].Trim();
+            int closeParen = rest.LastIndexOf(')');
+            if (closeParen > openParen)
+            {
+                rawArgs = rest[(openParen + 1)..closeParen].Trim();
+            }
+        }
+        else if (firstSpace > 0)
+        {
+            eventName = rest[..firstSpace].Trim();
+            rawArgs = rest[(firstSpace + 1)..].Trim();
+        }
+        else
+        {
+            eventName = rest.Trim();
+        }
+
+        var argValues = new List<VbValue>();
+        if (!string.IsNullOrWhiteSpace(rawArgs))
+        {
+            var parts = SplitCommaArguments(rawArgs);
+            foreach (var p in parts)
+            {
+                if (string.IsNullOrWhiteSpace(p))
+                {
+                    argValues.Add(VbValue.Empty);
+                }
+                else
+                {
+                    argValues.Add(VbExpressionEvaluator.Evaluate(p, _context));
+                }
+            }
+        }
+
+        _context.RaiseEvent(eventName, argValues.ToArray());
+    }
 
     private void ExecuteDebugPrint(string expr)
     {
@@ -348,20 +418,39 @@ public class VbStatementInterpreter
 
         var value = VbExpressionEvaluator.Evaluate(expr, _context);
 
-        // Si es asignación a propiedad de control: ej. `Text1.Text = "Hola"` o `Form1.Caption = ...`
-        int dot = target.LastIndexOf('.');
+        // Si es asignación a propiedad de control u objeto encadenado:
+        // ej. `Text1.Text = "Hola"`, `MSFlexGrid1.TextMatrix(r, c) = "X"`, `ListView1.ListItems(1).SubItems(1) = "Y"`
+        int dot = FindLastTopLevelDot(target);
         if (dot > 0)
         {
             string objName = target[..dot].Trim();
             string propName = target[(dot + 1)..].Trim();
 
-            // Si objName contiene un índice, ej. `Command1(Index)` o `Command1(0)`
-            var obj = objName.Contains('(')
+            var obj = (objName.Contains('(') || objName.Contains('.'))
                 ? VbExpressionEvaluator.Evaluate(objName, _context)
                 : _context.GetVariable(objName);
 
             if (obj.RawValue is ILiveControl ctrl)
             {
+                int openParen = propName.IndexOf('(');
+                int closeParen = propName.LastIndexOf(')');
+                if (openParen > 0 && closeParen > openParen && closeParen == propName.Length - 1)
+                {
+                    string basePropName = propName[..openParen].Trim();
+                    string insideArgs = propName[(openParen + 1)..closeParen].Trim();
+                    var indexArgs = new List<VbValue>();
+                    if (!string.IsNullOrWhiteSpace(insideArgs))
+                    {
+                        foreach (var argExpr in SplitCommaArguments(insideArgs))
+                        {
+                            indexArgs.Add(VbExpressionEvaluator.Evaluate(argExpr, _context));
+                        }
+                    }
+
+                    ctrl.SetIndexedProperty(basePropName, indexArgs.ToArray(), value);
+                    return;
+                }
+
                 ctrl.SetProperty(propName, value);
                 return;
             }
@@ -383,20 +472,16 @@ public class VbStatementInterpreter
         string subName;
         string argsStr;
 
-        int space = line.IndexOf(' ');
-        int paren = line.IndexOf('(');
-
-        if (paren > 0 && (space < 0 || paren < space))
+        int topSpace = FindFirstTopLevelSpace(line);
+        if (topSpace > 0)
         {
-            subName = line[..paren].Trim();
-            string inside = line[(paren + 1)..].Trim();
-            if (inside.EndsWith(')')) inside = inside[..^1].Trim();
-            argsStr = inside;
+            subName = line[..topSpace].Trim();
+            argsStr = line[(topSpace + 1)..].Trim();
         }
-        else if (space > 0)
+        else if (line.EndsWith(')') && TrySplitTrailingParenthesizedCall(line, out string? parsedSub, out string? parsedArgs))
         {
-            subName = line[..space].Trim();
-            argsStr = line[(space + 1)..].Trim();
+            subName = parsedSub!;
+            argsStr = parsedArgs!;
         }
         else
         {
@@ -433,14 +518,18 @@ public class VbStatementInterpreter
             return;
         }
 
-        // Si es método de objeto/control: `Command1.SetFocus` o `MiControl.AddItem "Item"`
-        int dot = subName.LastIndexOf('.');
+        // Si es método de objeto/control o colección encadenada:
+        // ej. `Command1.SetFocus`, `TreeView1.Nodes.Add , , "k", "Texto"`, `ListView1.ListItems(1).EnsureVisible`
+        int dot = FindLastTopLevelDot(subName);
         if (dot > 0)
         {
             string objName = subName[..dot].Trim();
             string methodName = subName[(dot + 1)..].Trim();
 
-            var obj = _context.GetVariable(objName);
+            var obj = (objName.Contains('(') || objName.Contains('.'))
+                ? VbExpressionEvaluator.Evaluate(objName, _context)
+                : _context.GetVariable(objName);
+
             if (obj.RawValue is ILiveControl ctrl)
             {
                 ctrl.InvokeMethod(methodName, args.ToArray());
@@ -450,6 +539,89 @@ public class VbStatementInterpreter
 
         // Probar si existe en el runtime
         VbRuntimeFunctions.TryInvoke(subName, args.ToArray(), out _);
+    }
+
+    private static int FindLastTopLevelDot(string expr)
+    {
+        bool inQuotes = false;
+        int parenDepth = 0;
+        int lastDot = -1;
+
+        for (int i = 0; i < expr.Length; i++)
+        {
+            char c = expr[i];
+            if (c == '"') inQuotes = !inQuotes;
+            else if (!inQuotes)
+            {
+                if (c == '(') parenDepth++;
+                else if (c == ')') parenDepth--;
+                else if (c == '.' && parenDepth == 0)
+                {
+                    lastDot = i;
+                }
+            }
+        }
+        return lastDot;
+    }
+
+    private static int FindFirstTopLevelSpace(string expr)
+    {
+        bool inQuotes = false;
+        int parenDepth = 0;
+
+        for (int i = 0; i < expr.Length; i++)
+        {
+            char c = expr[i];
+            if (c == '"') inQuotes = !inQuotes;
+            else if (!inQuotes)
+            {
+                if (c == '(') parenDepth++;
+                else if (c == ')') parenDepth--;
+                else if (c == ' ' && parenDepth == 0)
+                {
+                    return i;
+                }
+            }
+        }
+        return -1;
+    }
+
+    private static bool TrySplitTrailingParenthesizedCall(string expr, out string? subName, out string? argsStr)
+    {
+        subName = null;
+        argsStr = null;
+        if (!expr.EndsWith(')')) return false;
+
+        bool inQuotes = false;
+        int parenDepth = 0;
+        int openParenIdx = -1;
+
+        for (int i = expr.Length - 1; i >= 0; i--)
+        {
+            char c = expr[i];
+            if (c == '"') inQuotes = !inQuotes;
+            else if (!inQuotes)
+            {
+                if (c == ')') parenDepth++;
+                else if (c == '(')
+                {
+                    parenDepth--;
+                    if (parenDepth == 0)
+                    {
+                        openParenIdx = i;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (openParenIdx > 0)
+        {
+            subName = expr[..openParenIdx].Trim();
+            argsStr = expr[(openParenIdx + 1)..^1].Trim();
+            return true;
+        }
+        return false;
     }
 
     #endregion

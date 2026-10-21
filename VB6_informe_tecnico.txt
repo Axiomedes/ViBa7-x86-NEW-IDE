@@ -1,0 +1,898 @@
+INFORME TECNICO: VISUAL BASIC 6.0 (INCLUYENDO SERVICE PACK 6)
+Base tecnica para el diseno de un lenguaje sucesor con compilacion nativa a 64 bits
+Fecha de elaboracion: 21 de octubre de 2026
+
+====================================================================
+1. DEFINICION DEL LENGUAJE
+====================================================================
+
+Visual Basic 6.0 (VB6) es un lenguaje de programacion visual, imperativo y
+basado en objetos, desarrollado por Microsoft y publicado en 1998 como parte
+de Visual Studio 6.0.
+
+Esta orientado principalmente a:
+
+- Desarrollo rapido de aplicaciones con interfaz grafica en Windows.
+- Creacion de componentes COM y ActiveX.
+- Automatizacion de aplicaciones Microsoft Office.
+- Acceso a bases de datos mediante DAO, RDO y ADO.
+- Desarrollo de ejecutables, DLL, controles OCX y servicios basados en COM.
+
+VB6 no es un lenguaje completamente orientado a objetos. Ofrece clases,
+encapsulacion, interfaces COM, eventos y propiedades, pero carece de:
+
+- Herencia de implementacion.
+- Sobrecarga de metodos.
+- Genericos.
+- Lambdas y closures.
+- Programacion asincronica nativa.
+- Concurrencia segura integrada al lenguaje.
+- Null-safety estatica.
+- Constructores con parametros.
+- Destructores deterministas completos.
+
+VB6 se compila normalmente a codigo nativo x86 de 32 bits o se ejecuta dentro
+del entorno de desarrollo para depuracion. Los ejecutables generados dependen
+del runtime msvbvm60.dll.
+
+En sistemas Windows de 64 bits, las aplicaciones VB6 funcionan mediante la
+capa de compatibilidad WOW64. No existe un runtime VB6 nativo de 64 bits.
+
+====================================================================
+2. SERVICE PACK 6
+====================================================================
+
+Visual Basic 6.0 Service Pack 6 (SP6) es la ultima revision importante de la
+plataforma Visual Studio 6.0 / Visual Basic 6.0.
+
+SP6 no redefine el lenguaje ni introduce una nueva especificacion semantica.
+Su funcion principal es actualizar y corregir:
+
+- El entorno de desarrollo integrado, IDE.
+- El compilador.
+- El runtime de Visual Basic.
+- Bibliotecas y componentes redistribuibles.
+- Controles ActiveX y archivos OCX.
+- Herramientas de instalacion y despliegue.
+
+Para un sucesor moderno, la base correcta no es solo "VB6", sino:
+
+    VB6 + SP6 como linea base de compatibilidad
+    + modernizacion de tipos, memoria, UI, concurrencia y compilacion x64.
+
+El soporte oficial del IDE de VB6 finalizo en abril de 2008. Algunos archivos
+de runtime permanecen en Windows, pero con un esquema de soporte limitado,
+principalmente para regresiones graves y problemas criticos de seguridad en
+aplicaciones existentes.
+
+====================================================================
+3. COMPONENTES DE LA PLATAFORMA VB6
+====================================================================
+
+VB6 no es solamente un lenguaje. Es una plataforma compuesta por varios
+elementos interdependientes.
+
+| Componente                  | Funcion                                                        |
+|-----------------------------|----------------------------------------------------------------|
+| IDE de VB6                  | Editor de codigo, disenador visual, depurador y compilador.    |
+| Runtime msvbvm60.dll        | Ejecucion, strings, Variant, arrays, errores, formularios y COM.|
+| Runtime Extended Files      | Controles ActiveX, OCX, bibliotecas y herramientas redistribuibles. |
+| Modelo COM                  | Exposicion y consumo de objetos, interfaces y eventos binarios. |
+| Controles intrinsecos       | Botones, cuadros de texto, listas, formularios, menus, etc.     |
+| Controles ActiveX           | Componentes externos reutilizables, frecuentemente OCX.          |
+| DAO / RDO / ADO             | Tecnologias de acceso a datos.                                   |
+| Windows API                 | Acceso directo a funciones del sistema mediante Declare.          |
+
+El runtime principal es msvbvm60.dll. Microsoft tambien distribuye archivos
+extendidos de runtime que incluyen controles ActiveX y bibliotecas como:
+
+- comctl32.ocx
+- comdlg32.ocx
+- mswinsck.ocx
+- richtx32.ocx
+- msbind.dll
+- msdbrptr.dll
+- msstdfmt.dll
+
+Estos archivos deben distribuirse con la aplicacion cuando el sistema destino
+no garantiza su presencia.
+
+====================================================================
+4. ESTRUCTURA DE UN PROYECTO VB6
+====================================================================
+
+Un proyecto VB6 se organiza en archivos con extensiones especificas:
+
+| Extension | Contenido                                        |
+|-----------|--------------------------------------------------|
+| .vbp      | Archivo de proyecto.                              |
+| .frm      | Formulario: interfaz visual y codigo asociado.    |
+| .frx      | Recursos binarios del formulario.                 |
+| .bas      | Modulo estandar: procedimientos y variables globales. |
+| .cls      | Modulo de clase.                                  |
+| .ctl      | Control de usuario.                               |
+| .ctx      | Recursos binarios del control de usuario.          |
+| .pag      | Pagina de propiedades.                             |
+| .vbg      | Grupo de proyectos.                                |
+
+Ejemplo basico:
+
+    Option Explicit
+
+    Private Sub Form_Load()
+        Dim nombre As String
+        nombre = "Mundo"
+        MsgBox "Hola, " & nombre
+    End Sub
+
+====================================================================
+5. SINTAXIS GENERAL
+====================================================================
+
+VB6 utiliza una sintaxis verbal, basada en lineas y en gran medida insensible
+a mayusculas y minusculas en identificadores.
+
+Reglas basicas:
+
+- Cada instruccion ocupa normalmente una linea.
+- El caracter ":" permite colocar varias instrucciones en una misma linea.
+- El caracter "_" permite continuar una instruccion en la linea siguiente.
+- Los comentarios comienzan con apostrofo: '
+- La declaracion explicita de variables se recomienda mediante Option Explicit.
+- La asignacion de valores usa "=".
+- La asignacion de referencias a objetos usa "Set".
+
+Ejemplo:
+
+    Option Explicit
+
+    Private Sub Main()
+        Dim mensaje As String
+        mensaje = "Hola VB6"
+        Debug.Print mensaje
+    End Sub
+
+Estructuras de control disponibles:
+
+- If...Then...ElseIf...Else...End If
+- Select Case...End Select
+- For...Next
+- For Each...Next
+- Do...Loop
+- While...Wend
+- With...End With
+- GoTo
+- On Error...
+
+====================================================================
+6. SISTEMA DE TIPOS
+====================================================================
+
+El sistema de tipos de VB6 combina tipos estaticos, tipos dinamicos mediante
+Variant y tipos de referencia COM.
+
+Si una variable no se declara con un tipo concreto, su tipo predeterminado es
+Variant. Por esta razon, Option Explicit es fundamental para evitar errores
+silenciosos de escritura y conversion.
+
+| Tipo       | Tamano tipico en VB6 32 bits | Uso y rango                                      |
+|------------|------------------------------:|--------------------------------------------------|
+| Byte       | 1 byte                        | 0 a 255.                                         |
+| Boolean    | 2 bytes                       | True o False. Internamente -1 y 0.               |
+| Integer    | 2 bytes                       | -32.768 a 32.767.                                |
+| Long       | 4 bytes                       | Entero con signo de 32 bits.                     |
+| Single     | 4 bytes                       | Punto flotante IEEE 754 de precision simple.     |
+| Double     | 8 bytes                       | Punto flotante IEEE 754 de precision doble.      |
+| Currency   | 8 bytes                       | Entero escalado con 4 decimales; util para dinero. |
+| Date       | 8 bytes                       | Fecha y hora almacenada como valor serial Double. |
+| String     | Variable                      | Cadena administrada por el runtime.              |
+| Object     | 4 bytes                       | Referencia COM de 32 bits.                        |
+| Variant    | Variable                      | Contenedor polimorfico con subtipo dinamico.      |
+| Decimal    | Solo como subtipo de Variant  | Decimal exacto de alta precision.                 |
+| Array      | Variable                      | Estático o dinamico, con limites configurables.   |
+| Type / UDT | Variable                      | Registro de campos; no es una clase.              |
+
+Ejemplos:
+
+    Dim contador As Integer
+    Dim total As Currency
+    Dim activo As Boolean
+    Dim nombre As String
+    Dim valores() As String
+    Dim registro As MiTipo
+
+Puntos criticos para un sucesor:
+
+- Integer en VB6 es de 16 bits.
+- Long en VB6 es de 32 bits.
+- No existe un tipo entero nativo de 64 bits en el lenguaje base.
+- Object es una referencia de 32 bits.
+- Los handles y punteros modernos de Windows pueden ser de 64 bits.
+
+Por ello, un sucesor debe conservar los nombres VB6 como alias de migracion,
+pero introducir tipos explicitos modernos:
+
+    Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64
+    Float32, Float64
+    IntPtr / NativeInt
+    String
+    Boolean
+    Date
+    Decimal
+
+====================================================================
+7. VARIANT Y SEMANTICA DINAMICA
+====================================================================
+
+Variant es el rasgo semantico mas distintivo de VB6. Es un valor etiquetado
+que puede almacenar distintos tipos de datos.
+
+Subtipos principales de Variant:
+
+- Empty: variable Variant aun no inicializada.
+- Null: ausencia intencional de valor.
+- Nothing: referencia de objeto nula.
+- Missing: argumento opcional no suministrado.
+- Error: valor de error embebido.
+- Byte, Integer, Long, Single, Double, Currency, Decimal.
+- String.
+- Boolean.
+- Date.
+- Arrays.
+- Objetos COM.
+
+Ejemplo:
+
+    Dim v As Variant
+    v = 10
+    v = v / 3
+    Debug.Print TypeName(v)
+
+La aritmetica con Variant puede promover tipos:
+
+- Integer puede promoverse a Long.
+- Long puede promoverse a Double.
+- Las operaciones pueden producir resultados de distinto subtipo segun los
+  operandos y el contexto.
+
+VB6 utiliza redondeo bancario, tambien llamado "round half to even", en
+funciones como Round. Este comportamiento es relevante para aplicaciones
+financieras y debe documentarse con precision en un sucesor.
+
+====================================================================
+8. VARIABLES, AMBITO Y CICLO DE VIDA
+====================================================================
+
+| Declaracion                          | Ambito                                          |
+|--------------------------------------|-------------------------------------------------|
+| Dim dentro de un procedimiento       | Local al procedimiento.                          |
+| Static dentro de un procedimiento    | Conserva su valor entre llamadas.                |
+| Dim o Private a nivel de modulo      | Privado al modulo.                               |
+| Public a nivel de modulo estandar    | Global dentro del proyecto.                      |
+| Public en modulo de clase            | Miembro publico de la clase.                     |
+| Global                               | Equivalente historico a Public en modulos.       |
+| Friend                               | Accesible dentro del proyecto o componente.      |
+
+Ejemplo:
+
+    Option Explicit
+
+    Private contador As Long
+
+    Public Sub Incrementar()
+        Static llamadas As Long
+        llamadas = llamadas + 1
+        contador = contador + 1
+    End Sub
+
+VB6 distingue entre asignacion de valor y asignacion de referencia:
+
+    Dim texto As String
+    texto = "Hola"
+
+    Dim objeto As Object
+    Set objeto = CreateObject("Scripting.Dictionary")
+    Set objeto = Nothing
+
+Esta distincion es parte esencial de la semantica VB6. Un sucesor puede
+eliminar la palabra clave Set, pero debe conservar una semantica clara para
+asignacion de valores y referencias.
+
+====================================================================
+9. PROCEDIMIENTOS, FUNCIONES Y PARAMETROS
+====================================================================
+
+VB6 soporta Sub y Function.
+
+    Public Function Sumar(ByVal a As Double, _
+                          ByVal b As Double, _
+                          Optional ByVal factor As Double = 1#) As Double
+        Sumar = (a + b) * factor
+    End Function
+
+    Public Sub Procesar(ParamArray valores() As Variant)
+        Dim i As Long
+        For i = LBound(valores) To UBound(valores)
+            Debug.Print valores(i)
+        Next i
+    End Sub
+
+Caracteristicas:
+
+- ByVal copia el argumento.
+- ByRef pasa una referencia al argumento.
+- ByRef es el modo predeterminado si no se especifica nada.
+- Optional permite omitir argumentos.
+- Los parametros opcionales pueden tener valores predeterminados.
+- ParamArray permite un numero variable de argumentos.
+- Los argumentos pueden pasarse por nombre.
+
+Ejemplo de argumentos nombrados:
+
+    resultado = Sumar(a:=2, b:=3, factor:=2)
+
+Una Function devuelve un valor asignando el nombre de la funcion:
+
+    Function Doblar(ByVal n As Long) As Long
+        Doblar = n * 2
+    End Function
+
+====================================================================
+10. ORIENTACION A OBJETOS
+====================================================================
+
+VB6 ofrece un modelo de objetos basado en COM.
+
+Caracteristicas disponibles:
+
+- Clases mediante modulos .cls.
+- Encapsulacion con Private, Public y Friend.
+- Propiedades mediante Property Get, Property Let y Property Set.
+- Metodos publicos y privados.
+- Eventos mediante Event y RaiseEvent.
+- Implementacion de interfaces mediante Implements.
+- Referencias con conteo de referencias COM.
+- Creacion temprana y tardia de objetos.
+- Componentes ActiveX DLL, ActiveX EXE y controles OCX.
+
+Caracteristicas ausentes:
+
+- Herencia de implementacion.
+- Polimorfismo por sobrecarga.
+- Genericos.
+- Constructores con parametros.
+- Interfaces genericas.
+- Clases abstractas formales.
+- Destructores deterministas garantizados.
+
+Ejemplo de interfaz:
+
+    ' ICalculadora.cls
+    Public Function Sumar(ByVal a As Double, ByVal b As Double) As Double
+    End Function
+
+Ejemplo de implementacion:
+
+    ' Calculadora.cls
+    Option Explicit
+    Implements ICalculadora
+
+    Private Function ICalculadora_Sumar(ByVal a As Double, _
+                                        ByVal b As Double) As Double
+        ICalculadora_Sumar = a + b
+    End Function
+
+====================================================================
+11. PROPIEDADES
+====================================================================
+
+Las propiedades permiten exponer estado con logica de acceso.
+
+VB6 define tres formas principales:
+
+- Property Get: lectura.
+- Property Let: asignacion de valores o cadenas.
+- Property Set: asignacion de referencias a objetos.
+
+Ejemplo:
+
+    Private mValor As Long
+    Private mObjeto As Object
+
+    Public Property Get Valor() As Long
+        Valor = mValor
+    End Property
+
+    Public Property Let Valor(ByVal NewValue As Long)
+        mValor = NewValue
+    End Property
+
+    Public Property Set Objeto(ByVal NewValue As Object)
+        Set mObjeto = NewValue
+    End Property
+
+Una clase puede definir una propiedad predeterminada mediante Default. Esto
+permite sintaxis como:
+
+    valor = coleccion("clave")
+
+Los controles tambien exponen propiedades, por ejemplo:
+
+- Caption
+- Text
+- Enabled
+- Visible
+- Left
+- Top
+- Width
+- Height
+- BackColor
+- ForeColor
+- Font
+- TabIndex
+- TabStop
+
+====================================================================
+12. CONTROL DE FLUJO
+====================================================================
+
+Condicional:
+
+    If x > 0 Then
+        Debug.Print "positivo"
+    ElseIf x = 0 Then
+        Debug.Print "cero"
+    Else
+        Debug.Print "negativo"
+    End If
+
+Seleccion multiple:
+
+    Select Case estado
+        Case "A"
+            Debug.Print "Alta"
+        Case "B", "C"
+            Debug.Print "Media"
+        Case Else
+            Debug.Print "Baja"
+    End Select
+
+Bucles:
+
+    For i = 1 To 10 Step 2
+        Debug.Print i
+    Next i
+
+    For Each item In coleccion
+        Debug.Print item
+    Next
+
+    Do While condicion
+        ' codigo
+    Loop
+
+    Do
+        ' codigo
+    Loop Until condicion
+
+VB6 tambien permite GoTo, especialmente en el manejo clasico de errores:
+
+    On Error GoTo Manejador
+
+    ' codigo
+
+    Exit Sub
+
+    Manejador:
+        MsgBox Err.Description
+
+====================================================================
+13. MANEJO DE ERRORES
+====================================================================
+
+VB6 utiliza manejo de errores no estructurado, basado en numeros de error,
+objetos Err y saltos mediante GoTo.
+
+    On Error GoTo ErrHandler
+
+    Dim f As Integer
+    f = FreeFile
+    Open "datos.txt" For Input As #f
+    Close #f
+    Exit Sub
+
+    ErrHandler:
+        Select Case Err.Number
+            Case 53
+                MsgBox "Archivo no encontrado"
+            Case Else
+                MsgBox "Error " & Err.Number & ": " & Err.Description
+        End Select
+
+Elementos principales:
+
+- On Error GoTo etiqueta
+- On Error Resume Next
+- On Error GoTo 0
+- Err.Number
+- Err.Description
+- Err.Source
+- Err.HelpFile
+- Err.HelpContext
+- Err.Raise
+- Resume
+- Resume Next
+- Resume etiqueta
+
+Para un sucesor moderno se recomienda:
+
+- Try / Catch / Finally estructurado.
+- Excepciones tipadas.
+- Stack traces confiables.
+- Manejo determinista de recursos mediante Using o Dispose.
+- Compatibilidad opcional con On Error para migracion.
+
+====================================================================
+14. CADENAS, COLECCIONES Y ARRAYS
+====================================================================
+
+VB6 tiene un conjunto amplio de funciones de cadena:
+
+    Dim s As String
+    s = "Visual Basic 6"
+
+    Debug.Print Len(s)
+    Debug.Print UCase$(s)
+    Debug.Print LCase$(s)
+    Debug.Print Left$(s, 6)
+    Debug.Print Right$(s, 1)
+    Debug.Print Mid$(s, 8, 5)
+    Debug.Print InStr(s, "Basic")
+    Debug.Print Replace(s, "6", "SP6")
+    Debug.Print Trim$(s)
+
+Las funciones con sufijo $, como Left$, Mid$ y UCase$, devuelven String en
+lugar de Variant, evitando conversiones dinamicas.
+
+Colecciones:
+
+    Dim c As New Collection
+    c.Add "uno", "k1"
+
+    Debug.Print c("k1")
+    Debug.Print c.Count
+
+Las colecciones VB6:
+
+- Mantienen orden de insercion.
+- Permiten claves opcionales.
+- Permiten acceso por indice o clave.
+- No son fuertemente tipadas.
+- No validan tipos de clave o valor en tiempo de compilacion.
+
+Arrays:
+
+    Dim valores(1 To 10) As Long
+    ReDim Preserve valores(1 To 20)
+
+Reglas importantes:
+
+- Los arrays pueden tener limite inferior distinto de cero.
+- LBound devuelve el limite inferior.
+- UBound devuelve el limite superior.
+- ReDim cambia el tamano de un array dinamico.
+- ReDim Preserve conserva los datos existentes.
+- En arrays multidimensionales, ReDim Preserve solo puede modificar la ultima
+  dimension.
+
+====================================================================
+15. FORMULARIOS, CONTROLES Y EVENTOS
+====================================================================
+
+El modelo de interfaz de VB6 es dirigido por eventos. Un formulario contiene
+controles; cada control expone propiedades, metodos y eventos.
+
+    Private Sub Command1_Click()
+        Label1.Caption = Text1.Text
+    End Sub
+
+    Private Sub Form_Load()
+        Me.Caption = "Aplicacion VB6"
+    End Sub
+
+Conceptos tecnicos:
+
+- Coordenadas por defecto en twips.
+- 1.440 twips equivalen a una pulgada.
+- Los controles tienen Name, Index, Enabled, Visible, TabIndex y TabStop.
+- Los arrays de controles se identifican mediante la propiedad Index.
+- La interfaz esta basada en el bucle de mensajes de Windows.
+- VB6 no ofrece async/await ni concurrencia segura en el lenguaje.
+
+Eventos frecuentes:
+
+- Click
+- DblClick
+- Change
+- KeyPress
+- KeyDown
+- KeyUp
+- MouseDown
+- MouseMove
+- MouseUp
+- GotFocus
+- LostFocus
+- Load
+- Unload
+- QueryUnload
+- Resize
+- Terminate
+
+====================================================================
+16. COM, ACTIVEX E INTEROPERABILIDAD
+====================================================================
+
+COM es la base del modelo de componentes de VB6.
+
+VB6 permite:
+
+- Consumir objetos COM.
+- Exponer clases como componentes COM.
+- Crear ActiveX DLL.
+- Crear ActiveX EXE.
+- Crear controles ActiveX OCX.
+- Usar automatizacion OLE.
+- Manejar eventos COM mediante WithEvents.
+- Invocar la Windows API mediante Declare.
+
+Late binding:
+
+    Dim excel As Object
+    Set excel = CreateObject("Excel.Application")
+    excel.Visible = True
+
+Early binding:
+
+    ' Requiere agregar una referencia a la type library correspondiente.
+    Dim app As Excel.Application
+    Set app = New Excel.Application
+
+Declaracion de API:
+
+    Private Declare Function MessageBox Lib "user32" _
+        Alias "MessageBoxA" _
+        (ByVal hWnd As Long, _
+         ByVal lpText As String, _
+         ByVal lpCaption As String, _
+         ByVal uType As Long) As Long
+
+Este es uno de los mayores problemas para la migracion a 64 bits: Long en VB6
+es de 32 bits, mientras que muchos handles y punteros modernos son de 64 bits.
+
+Un sucesor debe incluir:
+
+- IntPtr o NativeInt.
+- Handles de tamano nativo.
+- Marshalling explicito.
+- Declaraciones externas seguras.
+- Compatibilidad opcional con COM de 32 y 64 bits.
+
+====================================================================
+17. ACCESO A DATOS
+====================================================================
+
+VB6 integro varias tecnologias de acceso a datos:
+
+- DAO: Data Access Objects, orientado a Access y Jet.
+- RDO: Remote Data Objects, orientado a ODBC.
+- ADO: ActiveX Data Objects, basado en OLE DB.
+- Controles enlazados a datos.
+
+Ejemplo con ADO:
+
+    Dim cnn As Object
+    Dim rs As Object
+
+    Set cnn = CreateObject("ADODB.Connection")
+    cnn.Open "Provider=SQLOLEDB;Data Source=servidor;" & _
+             "Initial Catalog=base;Integrated Security=SSPI"
+
+    Set rs = cnn.Execute("SELECT Nombre FROM Clientes")
+
+    Do While Not rs.EOF
+        Debug.Print rs.Fields("Nombre").Value
+        rs.MoveNext
+    Loop
+
+Para un sucesor:
+
+- No debe heredar DAO, RDO o ADO como primitivas del lenguaje.
+- Debe ofrecer una API de datos moderna, tipada y asincronica.
+- Debe permitir conectores para SQL, REST, archivos y servicios en la nube.
+- Debe mantener ADO como biblioteca de compatibilidad opcional.
+
+====================================================================
+18. RUNTIME Y DESPLIEGUE
+====================================================================
+
+El runtime principal es msvbvm60.dll.
+
+Puntos criticos:
+
+- VB6 produce binarios PE32 de 32 bits.
+- En Windows de 64 bits, VB6 se ejecuta mediante WOW64.
+- El IDE nunca tuvo version nativa de 64 bits.
+- Los controles ActiveX de 32 bits requieren registro COM.
+- El empaquetado clasico usa Package & Deployment Wizard.
+- La localizacion depende de binarios adicionales.
+- El despliegue moderno requiere instaladores, firmas digitales y actualizaciones.
+
+Un sucesor debe ofrecer:
+
+- Compilacion nativa x64.
+- Compilacion opcional x86 y ARM64.
+- Ejecutables autocontenidos o con runtime versionado.
+- Instaladores modernos.
+- Firma digital.
+- Actualizacion automatica.
+- Aislamiento de dependencias.
+- Compatibilidad controlada con componentes COM heredados.
+
+====================================================================
+19. QUE CAMBIA Y QUE NO CAMBIA CON SP6
+====================================================================
+
+SP6 no introduce un nuevo estandar del lenguaje ni modifica sustancialmente
+la semantica de VB6.
+
+| Area         | Base VB6 SP6                    | Recomendacion para sucesor                        |
+|--------------|---------------------------------|---------------------------------------------------|
+| Binarios     | x86 de 32 bits                  | x64 nativo, con opciones x86 y ARM64.             |
+| Runtime      | msvbvm60.dll y COM              | Runtime propio o backend moderno; COM opcional.   |
+| Tipos        | Integer=16 bits, Long=32 bits   | Alias compatibles; Int32, Int64 e IntPtr modernos.|
+| Objetos      | COM y conteo de referencias     | GC moderno o conteo explicito; COM como interoperabilidad. |
+| Errores      | On Error                        | Try/Catch/Finally con compatibilidad.             |
+| UI           | Win32, twips, ActiveX           | UI moderna, HiDPI, accesible y declarativa.       |
+| Datos        | DAO/RDO/ADO                     | API moderna; ADO como compatibilidad.             |
+| Concurrencia | Practicamente ausente           | async/await, tareas, cancelacion y contexto de UI.|
+| Cadenas      | UTF-16 interno, API ANSI frecuente | UTF-8/UTF-16 explicitos y codificacion declarada. |
+| Despliegue   | DLL/OCX registrados             | Ejecutable firmado, versionado y actualizable.    |
+
+====================================================================
+20. SEMANTICA QUE CONVIENE PRESERVAR
+====================================================================
+
+Si el nuevo lenguaje pretende ser el sucesor natural de VB6, debe conservar
+las caracteristicas que definen su experiencia de programacion:
+
+- Sintaxis legible, verbal y basada en lineas.
+- Option Explicit.
+- Distincion entre asignacion de valor y referencia.
+- Propiedades Get, Let y Set, al menos como compatibilidad.
+- Parametros ByRef y ByVal.
+- Argumentos opcionales y nombrados.
+- ParamArray.
+- Arrays con limites configurables.
+- ReDim y ReDim Preserve.
+- Colecciones con claves.
+- Variant con Empty, Null, Nothing, Missing y Error.
+- Eventos y programacion visual dirigida por mensajes.
+- Manejo de errores por numero y descripcion.
+- Formularios como unidad central de aplicacion.
+- Compatibilidad con codigo heredado y componentes COM.
+
+====================================================================
+21. SEMANTICA QUE CONVIENE CORREGIR
+====================================================================
+
+Un sucesor moderno no debe copiar ciegamente las limitaciones historicas:
+
+- Reemplazar Integer de 16 bits por Int32 como tipo entero por defecto.
+- Sustituir Long de 32 bits por Int64 en APIs modernas.
+- Eliminar Variant como tipo por defecto.
+- Hacer explicita la distincion entre valor y referencia.
+- Reemplazar On Error por excepciones estructuradas.
+- Reducir el uso de GoTo a escenarios de compatibilidad.
+- Incorporar concurrencia segura desde el lenguaje.
+- Modernizar la UI para HiDPI, accesibilidad, temas e internacionalizacion.
+- Hacer explicita la codificacion de texto.
+- Permitir compilacion nativa x64 sin depender de WOW64.
+- Incorporar null-safety configurable.
+- Incorporar generics y contratos de tipo modernos.
+- Ofrecer testing, analisis estatico y gestion de paquetes integrados.
+
+====================================================================
+22. ARQUITECTURA PROPUESTA PARA UN SUCESOR
+====================================================================
+
+Un sucesor natural podria denominarse VB Next, Visual Basic Moderno o un
+nombre equivalente, con la siguiente arquitectura:
+
+1. Frontend compatible
+   - Parser VB6.
+   - Analizador semantico.
+   - Diagnostico de migracion.
+   - Soporte de sintaxis clasica y moderna.
+
+2. Nucleo moderno
+   - Tipos fuertes.
+   - Modulos.
+   - Clases.
+   - Interfaces.
+   - Genericos opcionales.
+   - Patrones.
+   - Null-safety configurable.
+   - Manejo estructurado de errores.
+
+3. Modo de compatibilidad
+   - Variant.
+   - On Error.
+   - ByRef.
+   - Property Let y Property Set.
+   - Arrays VB6.
+   - Promocion numerica.
+   - Colecciones y cadenas compatibles.
+
+4. Backend de compilacion
+   - LLVM, Cranelift o backend propio.
+   - Emision nativa para x64, ARM64 y x86.
+   - Optimizaciones.
+   - Generacion de PDB o simbolos de depuracion.
+
+5. Runtime propio
+   - Cadenas Unicode.
+   - Colecciones.
+   - Arrays.
+   - Variant.
+   - Fechas.
+   - Formato regional.
+   - E/S.
+   - Diagnostico.
+   - Memoria segura.
+
+6. Capa COM opcional
+   - Consumo de componentes COM.
+   - Exposicion de componentes COM.
+   - Compatibilidad con OCX heredados.
+   - Marshalling explicito y seguro.
+
+7. Interfaz grafica moderna
+   - Disenador visual.
+   - Controles nativos.
+   - HiDPI.
+   - Accesibilidad.
+   - Data binding.
+   - Temas.
+   - Internacionalizacion.
+
+8. Herramientas
+   - Compilador incremental.
+   - Language Server Protocol.
+   - Depurador.
+   - Gestor de paquetes.
+   - Analizador estatico.
+   - Migrador automatico.
+   - Pruebas unitarias.
+
+====================================================================
+23. RECOMENDACION FINAL
+====================================================================
+
+El sucesor natural de VB6 no deberia ser una copia literal del lenguaje, sino
+un lenguaje que conserve su modelo mental y su facilidad de desarrollo visual,
+mientras corrige sus limitaciones de plataforma.
+
+La estrategia recomendada es:
+
+    Compatibilidad semantica con VB6 SP6
+    + sistema de tipos moderno
+    + compilacion nativa a 64 bits
+    + runtime propio
+    + interoperabilidad COM opcional
+    + UI moderna
+    + concurrencia segura
+    + herramientas de migracion automatica.
+
+Esto permite que aplicaciones y equipos con experiencia VB6 puedan migrar de
+forma progresiva, sin perder la productividad, legibilidad y modelo basado en
+formularios y eventos que hicieron popular a Visual Basic 6.

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using ViBa7.ProjectModel.IntelliSense;
 
@@ -12,6 +12,7 @@ public class OcxParameterInfo
     public string Name { get; set; } = string.Empty;
     public string Type { get; set; } = "Variant";
     public bool IsOptional { get; set; }
+    public bool IsByRef { get; set; }
     public string? DefaultValue { get; set; }
     public string? Description { get; set; }
 }
@@ -29,6 +30,10 @@ public class OcxMemberInfo
     public bool IsPropertyGet { get; set; }
     public bool IsPropertyPut { get; set; }
     public int DispId { get; set; }
+    public bool IsHidden { get; set; }
+    public bool IsBrowsable { get; set; } = true;
+    public bool IsBindable { get; set; }
+    public bool IsDefaultBind { get; set; }
 }
 
 /// <summary>
@@ -71,7 +76,9 @@ public class OcxControlInfo
     public string Clsid { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public string? DefaultInterfaceName { get; set; }
+    public string? DefaultInterfaceIid { get; set; }
     public string? EventsInterfaceName { get; set; }
+    public string? EventsInterfaceIid { get; set; }
     public List<OcxMemberInfo> Members { get; set; } = [];
     public List<OcxEventInfo> Events { get; set; } = [];
     public bool IsControl { get; set; } = true;

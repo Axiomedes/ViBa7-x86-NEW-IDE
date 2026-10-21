@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -60,6 +60,12 @@ public class FormDesignModel
     /// Propiedades públicas expuestas por el código del UserControl (.ctl).
     /// </summary>
     public List<UserControlExposedProperty> ExposedProperties { get; set; } = new();
+
+    // Declaraciones de bibliotecas ActiveX/OCX en la cabecera del archivo (ej. Object = "{GUID}#2.0#0"; "MSCOMCTL.OCX")
+    public List<string> ObjectDeclarations { get; set; } = new();
+
+    // Copia en memoria del archivo binario .frx / .ctx original para preservar offsets existentes sin pérdidas
+    public byte[]? OriginalFrxBytes { get; set; }
 
     // Controles hijos de primer nivel
     public List<FormDesignerControl> Children { get; set; } = new();

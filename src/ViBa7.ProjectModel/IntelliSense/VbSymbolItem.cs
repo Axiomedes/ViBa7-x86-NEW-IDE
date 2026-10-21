@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -15,6 +15,10 @@ public class VbSymbolItem
     public List<VbParameterInfo> Parameters { get; init; } = [];
     public string Description { get; init; } = string.Empty;
     public string? CustomSignature { get; init; } = null;
+    public int DispId { get; init; } = -1;
+    public bool IsHidden { get; init; } = false;
+    public bool IsBrowsable { get; init; } = true;
+    public bool IsReadOnly { get; init; } = false;
 
     public string Glyph => Kind switch
     {
