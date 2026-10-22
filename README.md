@@ -1,4 +1,5 @@
-# ViBa7 IDE (ViBa7-x86)
+# ViBa7 IDE (ViBa7-x86) <img width="200" height="200" alt="ViBa7" src="https://github.com/user-attachments/assets/f3761f3e-f757-4595-a493-8cbfbcbd4c36" />
+
 
 [![Build & Test](https://img.shields.io/badge/.NET-10.0%20LTS-512BD4?logo=dotnet)](https://dotnet.microsoft.com/)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20x86%20(WOW64)-0078D6?logo=windows)](https://microsoft.com)
